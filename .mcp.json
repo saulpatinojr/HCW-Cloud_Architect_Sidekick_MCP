@@ -1,0 +1,109 @@
+{
+  "mcpServers": {
+    "adr": {
+      "type": "http",
+      "url": "${ADR_MCP_URL:-http://localhost:7071/runtime/webhooks/mcp}",
+      "headers": {
+        "x-functions-key": "${ADR_MCP_KEY:-}"
+      }
+    },
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@azure/mcp@latest",
+        "server",
+        "start"
+      ],
+      "env": {
+        "AZURE_SUBSCRIPTION_ID": "${AZURE_SUBSCRIPTION_ID:-}"
+      }
+    },
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
+    "aws-docs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-documentation-mcp-server@latest"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "AWS_DOCUMENTATION_PARTITION": "aws"
+      }
+    },
+    "aws-iac": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-iac-mcp-server@latest"
+      ],
+      "env": {
+        "AWS_PROFILE": "${AWS_PROFILE:-default}",
+        "AWS_REGION": "${AWS_REGION:-us-east-1}",
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      }
+    },
+    "aws": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp"
+      ],
+      "env": {
+        "AWS_PROFILE": "${AWS_PROFILE:-default}",
+        "AWS_REGION": "${AWS_REGION:-us-east-1}"
+      }
+    },
+    "gcloud": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@google-cloud/gcloud-mcp"
+      ]
+    },
+    "gcp-storage": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@google-cloud/storage-mcp"
+      ]
+    },
+    "gcp-observability": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@google-cloud/observability-mcp"
+      ]
+    },
+    "cloud-run": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@google-cloud/cloud-run-mcp"
+      ]
+    },
+    "terraform": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "hashicorp/terraform-mcp-server:1.3.0"
+      ]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  }
+}

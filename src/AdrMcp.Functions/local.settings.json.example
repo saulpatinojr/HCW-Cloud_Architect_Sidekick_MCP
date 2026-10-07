@@ -1,0 +1,32 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AZURE_FUNCTIONS_ENVIRONMENT": "Development",
+
+    "Persistence__Provider": "InMemory",
+
+    "Cosmos__AccountEndpoint": "https://<your-cosmos-account>.documents.azure.com:443/",
+    "Cosmos__DatabaseName": "adr",
+
+    "Storage__ConnectionString": "UseDevelopmentStorage=true",
+    "Storage__JobsQueue": "analysis-jobs",
+
+    "Auth__Mode": "FunctionKey",
+    "Auth__StaticTenantId": "local-tenant",
+    "Auth__StaticWorkspaceId": "default",
+    "Auth__StaticPrincipalId": "local-developer",
+    "Auth__StaticRoles__0": "Author",
+    "Auth__StaticRoles__1": "Approver",
+
+    "Adr__PrincipalHashSalt": "local-dev-salt-not-for-production",
+    "Uploads__MaxFileBytes": "52428800",
+    "Uploads__UploadUrlTtlMinutes": "15",
+    "Uploads__BlockOnCriticalSafetyFinding": "true",
+    "Uploads__RequireDefenderScanResult": "false",
+
+    "SafetyPolicy__BlockingRuleIds__0": "",
+    "ContentSafety__MaskPhones": "true"
+  }
+}

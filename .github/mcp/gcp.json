@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gcloud": { "type": "stdio", "command": "npx", "args": ["-y", "@google-cloud/gcloud-mcp"] },
+    "gcp-storage": { "type": "stdio", "command": "npx", "args": ["-y", "@google-cloud/storage-mcp"] },
+    "gcp-observability": { "type": "stdio", "command": "npx", "args": ["-y", "@google-cloud/observability-mcp"] },
+    "cloud-run": { "type": "stdio", "command": "npx", "args": ["-y", "@google-cloud/cloud-run-mcp"] }
+  }
+}

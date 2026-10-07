@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AdrMcp.Domain</RootNamespace>
+    <Description>ADR Intelligence domain model. No external dependencies.</Description>
+  </PropertyGroup>
+</Project>

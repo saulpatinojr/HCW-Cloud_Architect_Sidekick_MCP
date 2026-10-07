@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "aws": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp"],
+      "env": { "AWS_PROFILE": "${AWS_PROFILE}", "AWS_REGION": "${AWS_REGION}" }
+    },
+    "aws-knowledge": { "type": "http", "url": "https://knowledge-mcp.global.api.aws" },
+    "aws-docs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["awslabs.aws-documentation-mcp-server@latest"],
+      "env": { "FASTMCP_LOG_LEVEL": "ERROR", "AWS_DOCUMENTATION_PARTITION": "aws" }
+    },
+    "aws-iac": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["awslabs.aws-iac-mcp-server@latest"],
+      "env": { "AWS_PROFILE": "${AWS_PROFILE}", "FASTMCP_LOG_LEVEL": "ERROR" }
+    }
+  }
+}

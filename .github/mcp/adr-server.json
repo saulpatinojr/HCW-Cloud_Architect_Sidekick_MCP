@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "adr": {
+      "type": "http",
+      "url": "https://<your-function-app>.azurewebsites.net/runtime/webhooks/mcp",
+      "headers": { "x-functions-key": "${ADR_MCP_KEY}" }
+    }
+  }
+}

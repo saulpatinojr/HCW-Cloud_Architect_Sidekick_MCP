@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);CS7022</NoWarn>
+    <RootNamespace>AdrMcp.UnitTests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AdrMcp.Application\AdrMcp.Application.csproj" />
+    <ProjectReference Include="..\..\src\AdrMcp.Infrastructure\AdrMcp.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\AdrMcp.Analysis\AdrMcp.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\AdrMcp.Functions\AdrMcp.Functions.csproj" />
+  </ItemGroup>
+</Project>

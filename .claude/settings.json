@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet run --project tools/AdrMcp.DocGen:*)",
+      "Bash(dotnet list:*)",
+      "Bash(bicep build:*)",
+      "Bash(bicep lint:*)",
+      "Bash(az bicep:*)",
+      "Bash(az deployment sub what-if:*)",
+      "Bash(python3 scripts/smoke-test.py:*)",
+      "Bash(func start:*)",
+      "Bash(azurite:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./src/AdrMcp.Functions/local.settings.json)",
+      "Read(./.azure/**)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(az functionapp keys list:*)",
+      "Bash(az keyvault secret show:*)",
+      "Bash(azd down:*)",
+      "Bash(terraform apply:*)",
+      "Bash(kubectl delete:*)"
+    ]
+  },
+  "env": {
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "DOTNET_NOLOGO": "1"
+  }
+}

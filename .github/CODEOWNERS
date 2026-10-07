@@ -1,0 +1,9 @@
+# Default owners for everything in the repo. Replace with your GitHub teams.
+*                                   @saulpatinojr
+
+# Security-sensitive areas require an additional reviewer.
+/src/AdrMcp.Infrastructure/         @saulpatinojr
+/src/AdrMcp.Analysis/Safety/        @saulpatinojr
+/src/AdrMcp.Application/Tools/      @saulpatinojr
+/infra/                             @saulpatinojr
+/.github/                           @saulpatinojr

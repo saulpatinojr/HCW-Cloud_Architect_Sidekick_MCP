@@ -1,0 +1,1 @@
+{"files":[{"path":"web/package.json","content":"{\"dependencies\":{\"express\":\"^4.19.2\",\"@azure/cosmos\":\"4.1.0\"}}"},{"path":"src/Api/Api.csproj","content":"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include=\"Newtonsoft.Json\" Version=\"13.0.3\" /></ItemGroup></Project>"}]}

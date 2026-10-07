@@ -1,0 +1,34 @@
+# Build
+bin/
+obj/
+out/
+TestResults/
+*.user
+*.suo
+.vs/
+.idea/
+*.swp
+
+# Azure Functions local settings (contains secrets/connection strings) - NEVER commit
+local.settings.json
+**/local.settings.json
+!**/local.settings.json.example
+
+# Environment files
+.env
+.env.*
+!.env.sample
+
+# Azure Developer CLI
+.azure/
+
+# Azurite emulator data
+__azurite_db*__.json
+__blobstorage__/
+__queuestorage__/
+__tablestorage__/
+.azurite/
+
+# Deliverable archive produced by scripts/package.sh
+dist/
+*.zip

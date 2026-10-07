@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: adr-mcp
+metadata:
+  template: adr-mcp@1.0.0
+infra:
+  provider: bicep
+  path: infra
+  module: main
+services:
+  api:
+    project: ./src/AdrMcp.Functions
+    language: dotnet
+    host: function
+hooks:
+  postprovision:
+    shell: sh
+    run: ./scripts/postprovision.sh
+    continueOnError: false
+    interactive: true

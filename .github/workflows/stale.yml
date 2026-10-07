@@ -1,0 +1,18 @@
+name: stale
+on:
+  schedule:
+    - cron: "30 1 * * *"
+permissions:
+  issues: write
+  pull-requests: write
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 60
+          days-before-close: 14
+          exempt-issue-labels: adr,security,pinned
+          stale-issue-message: "This issue has had no activity for 60 days and will close in 14 days unless updated."
+          stale-pr-message: "This pull request has had no activity for 60 days and will close in 14 days unless updated."

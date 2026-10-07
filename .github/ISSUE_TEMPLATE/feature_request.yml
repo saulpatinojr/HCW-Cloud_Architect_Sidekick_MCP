@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a new tool, detector, rule or integration
+labels: [enhancement, triage]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [ "MCP tool", "Technology detector", "Drift detector", "Contradiction rule", "Safety-review rule", "Content safety", "Infrastructure / deployment", "Client connection (Claude Code / Claude.ai)", "Other" ]
+    validations: { required: true }
+  - type: textarea
+    id: problem
+    attributes: { label: Problem to solve, description: Who needs it and what decision or risk it addresses }
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes: { label: Proposed behaviour, description: For tools include input/output sketch; for detectors the evidence files and the claim kind }
+    validations: { required: true }
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: The feature never changes human-owned ADR fields without a proposal and approval
+        - label: Any inferred output is labelled Inferred and capped at 0.6 confidence
+        - label: No new secrets, URLs or filesystem paths are accepted from the client

@@ -1,0 +1,32 @@
+name: Bug report
+description: Something in the MCP server, analyzers or infrastructure behaves incorrectly
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for the report. **Never paste keys, SAS URLs (`sig=`), connection strings or real customer data.** Use the correlationId from the tool response instead."
+  - type: input
+    id: tool
+    attributes: { label: MCP tool or component, placeholder: adr_detect_drift / FileUploadService / infra/modules/storage.bicep }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: Expected behaviour }
+    validations: { required: true }
+  - type: textarea
+    id: actual
+    attributes: { label: Actual behaviour (include error code and correlationId from the envelope) }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Steps to reproduce, description: Tool arguments with placeholders, or a failing test }
+    validations: { required: true }
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options: [ "Local (func start + Azurite, InMemory)", "Local (Cosmos emulator)", "Azure (FunctionKey auth)", "Azure (EntraBuiltIn auth)" ]
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Server version (host.json serverVersion) and MCP client, placeholder: 1.0.0 / Claude Code 2.1.x }

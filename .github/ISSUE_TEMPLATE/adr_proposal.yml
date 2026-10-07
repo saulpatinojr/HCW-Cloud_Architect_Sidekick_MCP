@@ -1,0 +1,24 @@
+name: Architecture decision proposal
+description: Propose a decision about this project's own architecture (filed as docs/adr/ADR-xxxx)
+labels: [adr, discussion]
+body:
+  - type: input
+    id: title
+    attributes: { label: Decision title, placeholder: Replace CONTAINS search with Azure AI Search }
+    validations: { required: true }
+  - type: textarea
+    id: context
+    attributes: { label: Context and problem statement }
+    validations: { required: true }
+  - type: textarea
+    id: options
+    attributes: { label: Considered options (at least two) }
+    validations: { required: true }
+  - type: textarea
+    id: decision
+    attributes: { label: Proposed decision and rationale }
+    validations: { required: true }
+  - type: textarea
+    id: consequences
+    attributes: { label: Consequences, rollback and monitoring }
+    validations: { required: true }

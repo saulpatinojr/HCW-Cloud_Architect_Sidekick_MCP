@@ -1,0 +1,27 @@
+area/functions:
+  - changed-files:
+      - any-glob-to-any-file: src/AdrMcp.Functions/**
+area/application:
+  - changed-files:
+      - any-glob-to-any-file: src/AdrMcp.Application/**
+area/analysis:
+  - changed-files:
+      - any-glob-to-any-file: src/AdrMcp.Analysis/**
+area/infrastructure-code:
+  - changed-files:
+      - any-glob-to-any-file: src/AdrMcp.Infrastructure/**
+area/infra:
+  - changed-files:
+      - any-glob-to-any-file: [ infra/**, azure.yaml ]
+area/docs:
+  - changed-files:
+      - any-glob-to-any-file: [ docs/**, README.md, "*.md" ]
+area/tests:
+  - changed-files:
+      - any-glob-to-any-file: tests/**
+area/ci:
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+security-review:
+  - changed-files:
+      - any-glob-to-any-file: [ src/AdrMcp.Infrastructure/**, src/AdrMcp.Analysis/Safety/**, src/AdrMcp.Application/Tools/**, infra/** ]

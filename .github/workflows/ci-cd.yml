@@ -77,7 +77,7 @@ jobs:
 
       - name: Publish Functions package
         run: dotnet publish src/AdrMcp.Functions -c Release -o publish/api
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: api, path: publish/api, retention-days: 7 }
 
   deploy:

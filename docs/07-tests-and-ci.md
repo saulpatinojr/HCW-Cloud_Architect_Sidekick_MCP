@@ -22,20 +22,21 @@ Run everything: `dotnet test AdrMcp.sln`.
 
 ## CI/CD (`.github/workflows/ci-cd.yml`)
 
-Token permissions are `{}` at workflow level. Each job requests only what it needs: `build-test` gets `contents: read`; `deploy` gets `contents: read` and `id-token: write` (OIDC). Timeouts: 30 minutes for `build-test`, 60 minutes for `deploy`.
+Token permissions are `{}` at workflow level. Each job requests only what it needs: `build-test` gets `contents: read` and `pull-requests: read` (gitleaks lists the PR's commits); `deploy` gets `contents: read` and `id-token: write` (OIDC). Timeouts: 30 minutes for `build-test`, 60 minutes for `deploy`. GitHub-owned actions (`actions/*`, `github/*`) are pinned by major version; every other action is pinned to a full commit SHA with a version comment, and Dependabot updates both.
 
 Pipeline stages, all required before deployment:
 
-1. **Start Azurite**: `docker run mcr.microsoft.com/azure-storage/azurite:3.37.0 ... --skipApiVersionCheck --disableTelemetry`, then wait for ports 10000/10001. A service container is not used because Azurite needs the `--skipApiVersionCheck` flag. Azure.Storage.Blobs 12.30.1 sends service API version 2026-10-06, which no Azurite release supports yet; without the flag even 3.37.0 returns `400 InvalidHeaderValue` (verified 2026-10-16).
-2. **Restore with NuGet Audit**, configured in `Directory.Build.props` (`NuGetAuditMode=all`, `NuGetAuditLevel=low`). NU1901–NU1904 are errors when `CI=true` and warnings locally, so restore fails on any known vulnerable direct or transitive package. Dependabot (`.github/dependabot.yml`) proposes NuGet and GitHub Actions updates weekly.
-3. **Build** (`dotnet build -c Release`, nullable warnings are errors).
-4. **Unit + integration tests**; failures fail the job. The integration step sets `ADR_TEST_REQUIRE_AZURITE=true`, so Azurite tests fail instead of silently skipping. TRX results and coverage are uploaded as the `test-results` artifact. They are not published as a check run: that needs `checks: write`, which pull requests from forks never get.
-5. **Secret scan**: gitleaks over full history.
-6. **Bicep validate**: `az bicep build` + `az bicep lint`.
-7. **Contract docs freshness**: regenerates `docs/03-mcp-contracts.md` and diffs.
-8. **Publish artifact** (`api`) for traceability.
-9. **Deploy job** runs on a `main` push or manual dispatch from `main`, and only when the repository variable `ADR_DEPLOY_ENABLED` is `true` (explicit opt-in, so forks and fresh clones never deploy). Without it, a push to `main` emits a `Deploy skipped` notice and the run stays green; with it, a preflight step fails loudly if any required Azure variable is empty. The job uses a **protected GitHub environment** (required reviewers = human approval gate) and **OIDC federated identity** (`azure/login` + `azd auth login --federated-credential-provider github`) — no long-lived Azure credentials. One deployment per environment runs at a time; a running deployment is never cancelled. It runs `az deployment sub what-if` (plan) before `azd provision` and `azd deploy`.
-10. **Post-deployment smoke test** with the system key fetched into a masked variable.
+1. **Secret scan** (gitleaks, pinned to a commit) runs first — before any pull-request code executes, so that code cannot plant a `.gitleaksignore`, and regardless of later test results.
+2. **Start Azurite**: `docker run mcr.microsoft.com/azure-storage/azurite:3.37.0 ... --skipApiVersionCheck --disableTelemetry`, bound to `127.0.0.1`, then wait until Azurite answers HTTP on ports 10000/10001. A service container is not used because Azurite needs the `--skipApiVersionCheck` flag. Azure.Storage.Blobs 12.30.1 sends service API version 2026-10-06, which no Azurite release supports yet; without the flag even 3.37.0 returns `400 InvalidHeaderValue` (verified 2026-10-16).
+3. **Restore with NuGet Audit**, configured in `Directory.Build.props` (`NuGetAuditMode=all`, `NuGetAuditLevel=low`). When `CI=true`, NU1901–NU1904 (known vulnerabilities) and NU1900/NU1905 (vulnerability data unavailable) are errors, so restore fails closed on any known vulnerable direct or transitive package; locally they are warnings. Dependabot (`.github/dependabot.yml`) proposes NuGet and GitHub Actions updates weekly.
+4. **Build** (`dotnet build -c Release`, nullable warnings are errors).
+5. **Host-extension vulnerability check**: the Functions SDK restores a generated `WorkerExtensions` project (the host-side extensions that ship to Azure) without `Directory.Build.props`, so NuGet Audit settings never reach it. CI runs `dotnet list package --vulnerable --include-transitive --format json` on it and fails on any finding — or if no report can be produced.
+6. **Unit + integration tests**; failures fail the job. The integration step sets `ADR_TEST_REQUIRE_AZURITE=true`, so Azurite tests fail instead of silently skipping. TRX results and coverage are uploaded as the `test-results` artifact. They are not published as a check run: that needs `checks: write`, which pull requests from forks never get.
+7. **Bicep validate**: `az bicep build` + `az bicep lint`.
+8. **Contract docs freshness**: regenerates `docs/03-mcp-contracts.md` and diffs.
+9. **Publish artifact** (`api`) for traceability.
+10. **Deploy job** runs on a `main` push or manual dispatch from `main`, and only when the repository variable `ADR_DEPLOY_ENABLED` is `true` (explicit opt-in, so forks and fresh clones never deploy). Without it, a push to `main` emits a `Deploy skipped` notice and the run stays green; with it, a preflight step fails loudly if any required Azure variable is empty. The job uses a **protected GitHub environment** (required reviewers = human approval gate) and **OIDC federated identity** (`azure/login` + `azd auth login --federated-credential-provider github`) — no long-lived Azure credentials. One deployment per environment runs at a time; a running deployment is never cancelled. It runs `az deployment sub what-if` (plan) before `azd provision` and `azd deploy`.
+11. **Post-deployment smoke test** with the system key fetched into a masked variable and passed to the script through `ADR_MCP_KEY` (never on the command line).
 
 Required configuration, in this order (GitHub auto-creates a missing environment **without** protection rules, so create it first):
 1. GitHub environment `adr-dev` with required reviewers and a deployment branch policy of `main` only.

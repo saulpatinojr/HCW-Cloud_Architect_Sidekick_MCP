@@ -24,7 +24,9 @@ All notable changes to this project are documented here. The format follows Keep
 
 ### Security
 - Replaced the broken `dotnet list package --vulnerable` step (it printed `MSB0001`, exited 0 and could never fail) with NuGet Audit in `Directory.Build.props` (`NuGetAuditMode=all`, `NuGetAuditLevel=low`). In CI, NU1901–NU1904 are errors, so restore fails on any known vulnerable direct or transitive package.
-- Least-privilege workflow token permissions: `{}` at workflow level; `build-test` gets `contents: read`, `deploy` gets `contents: read` and `id-token: write`.
+- Least-privilege workflow token permissions: `{}` at workflow level; `build-test` gets `contents: read` and `pull-requests: read`, `deploy` gets `contents: read` and `id-token: write`.
+- Non-GitHub actions (gitleaks-action, Azure/setup-azd, azure/login) are pinned to commit SHAs; the deploy job can mint Azure tokens. Gitleaks now runs before any pull-request code. NuGet Audit fails closed when vulnerability data is unavailable (NU1900/NU1905), and a new CI step scans the Functions host-extension packages (generated `WorkerExtensions` project), which NuGet Audit settings never reach.
+- The smoke test reads the function key from `ADR_MCP_KEY` so it stays off the command line; Azurite in CI binds to `127.0.0.1` and readiness waits for an HTTP answer.
 
 ## [1.0.0] - 2026-10-07
 

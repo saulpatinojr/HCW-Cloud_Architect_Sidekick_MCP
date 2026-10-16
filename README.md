@@ -4,14 +4,14 @@
 
 **Durable, evidence-backed architectural memory for Claude — hosted on Azure Functions.**
 
-[![CI/CD](https://github.com/saulpatinojr/HCW-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/saulpatinojr/HCW-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml)
-[![CodeQL](https://github.com/saulpatinojr/HCW-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml/badge.svg)](https://github.com/saulpatinojr/HCW-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml)
+[![CI/CD](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml)
+[![CodeQL](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml/badge.svg)](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Azure Functions](https://img.shields.io/badge/Azure%20Functions-Flex%20Consumption-0078D4?logo=azurefunctions&logoColor=white)](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-000000)](https://modelcontextprotocol.io/)
 [![Bicep](https://img.shields.io/badge/IaC-Bicep-0078D4)](infra/)
-[![Tests](https://img.shields.io/badge/tests-124%20unit%20%2B%206%20integration-brightgreen)](docs/07-tests-and-ci.md)
+[![Tests](https://img.shields.io/badge/tests-124%20unit%20%2B%207%20integration-brightgreen)](docs/07-tests-and-ci.md)
 [![Security policy](https://img.shields.io/badge/security-policy-important)](.github/SECURITY.md)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
@@ -60,7 +60,7 @@ Prerequisites: .NET 8 SDK, Node.js 20+, Python 3.9+.
 ```bash
 npm i -g azure-functions-core-tools@4 azurite
 cp src/AdrMcp.Functions/local.settings.json.example src/AdrMcp.Functions/local.settings.json
-mkdir -p .azurite && (azurite --silent --location .azurite &)
+mkdir -p .azurite && (azurite --silent --location .azurite --skipApiVersionCheck &)
 dotnet build AdrMcp.sln
 (cd src/AdrMcp.Functions && func start --port 7071)
 ```
@@ -188,7 +188,7 @@ Full details and the STRIDE table: [Security & threat model](docs/04-security-th
 
 ## Project status
 
-Verified in this repository: clean Release build, 124 unit tests and 6 Azurite integration tests passing, Bicep builds without warnings, and an end-to-end MCP smoke test against the real local Functions host. Items marked **[VERIFY]** in the docs (preview features, external redirect URIs, API versions) and **[REVIEW REQUIRED]** (identity setup) should be checked by a human before production use.
+Verified in this repository: clean Release build, 124 unit tests and 6 of 7 integration tests passing (the Cosmos DB test is skipped unless `ADR_TEST_COSMOS_ENDPOINT` or `ADR_TEST_COSMOS_CONNECTION_STRING` is set), Bicep builds without warnings, and an end-to-end MCP smoke test against the real local Functions host. Items marked **[VERIFY]** in the docs (preview features, external redirect URIs, API versions) and **[REVIEW REQUIRED]** (identity setup) should be checked by a human before production use.
 
 ## Contributing & community
 

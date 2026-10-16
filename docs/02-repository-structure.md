@@ -3,7 +3,7 @@
 ```
 .
 ├── AdrMcp.sln
-├── Directory.Build.props              # net8.0, nullable, nullable warnings as errors
+├── Directory.Build.props              # net8.0, nullable, nullable warnings as errors, NuGet Audit
 ├── Directory.Packages.props           # central package versions (pinned; verified against nuget.org 2026-10-07)
 ├── global.json                        # SDK 8.0.4xx, rollForward latestFeature
 ├── azure.yaml                         # Azure Developer CLI service + infra mapping (postprovision hook)

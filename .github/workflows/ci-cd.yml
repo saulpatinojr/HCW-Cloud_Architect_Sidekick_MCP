@@ -72,8 +72,13 @@ jobs:
           set -euo pipefail
           proj=$(find "$PWD/src/AdrMcp.Functions/obj/Release" -path '*/WorkerExtensions/WorkerExtensions.csproj' | head -n1)
           [ -n "$proj" ] || { echo "::error::Generated WorkerExtensions project not found (this step must run after Build)"; exit 1; }
-          dotnet list "$proj" package --vulnerable --include-transitive --format json > ext-vuln.json || true
-          jq -e '(.projects | length) > 0' ext-vuln.json > /dev/null 2>&1 || { cat ext-vuln.json; echo "::error::Could not produce a vulnerability report for $proj"; exit 1; }
+          # SDK 10+ restores implicitly, which fails for this generated project; reuse the build's restore instead
+          # (SDK 8 has no such flag and never restores here).
+          args=(package --vulnerable --include-transitive --format json)
+          help=$(dotnet list package --help 2>&1 || true)
+          case "$help" in *--no-restore*) args+=(--no-restore) ;; esac
+          dotnet list "$proj" "${args[@]}" > ext-vuln.json || true
+          jq -e '(.projects | length) > 0 and ((.problems // []) | length) == 0' ext-vuln.json > /dev/null 2>&1 || { cat ext-vuln.json; echo "::error::Could not produce a vulnerability report for $proj"; exit 1; }
           if jq -e '[.projects[].frameworks[]? | ((.topLevelPackages // [])[], (.transitivePackages // [])[])] | length > 0' ext-vuln.json > /dev/null; then
             jq '.projects[].frameworks' ext-vuln.json; echo "::error::Vulnerable packages in the Functions host extensions"; exit 1
           fi

@@ -94,8 +94,8 @@ Post-deploy check (the key is read from Azure at run time and never stored in th
 
 ```bash
 RG=$(azd env get-value AZURE_RESOURCE_GROUP); APP=$(azd env get-value AZURE_FUNCTION_APP_NAME)
-python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)" \
-  --key "$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)"
+ADR_MCP_KEY="$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)" \
+  python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)"
 ```
 
 Full walkthrough: [Local development & deployment](docs/05-local-dev-and-deploy.md).

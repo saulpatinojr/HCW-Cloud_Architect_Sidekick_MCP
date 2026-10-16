@@ -4,13 +4,13 @@ MCP smoke test for the ADR Intelligence server (Streamable HTTP transport, JSON-
 
 Usage:
   python3 scripts/smoke-test.py --url http://localhost:7071/runtime/webhooks/mcp
-  python3 scripts/smoke-test.py --url https://<app>.azurewebsites.net/runtime/webhooks/mcp --key "$MCP_EXTENSION_KEY"
+  ADR_MCP_KEY="$MCP_EXTENSION_KEY" python3 scripts/smoke-test.py --url https://<app>.azurewebsites.net/runtime/webhooks/mcp
   python3 scripts/smoke-test.py --url ... --bearer "$ACCESS_TOKEN"          # built-in Entra auth
 
 Exit code 0 when initialize, tools/list and a read/write round-trip succeed. Never prints the key or token.
 Standard library only (no pip install); safe for CI.
 """
-import argparse, json, sys, urllib.request, urllib.error
+import argparse, json, os, sys, urllib.request, urllib.error
 
 def post(url, headers, payload, timeout=60):
     data = json.dumps(payload).encode()
@@ -45,7 +45,7 @@ def parse_jsonrpc(body):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True)
-    ap.add_argument("--key", help="mcp_extension system key (x-functions-key)")
+    ap.add_argument("--key", default=os.environ.get("ADR_MCP_KEY"), help="mcp_extension system key (x-functions-key); defaults to $ADR_MCP_KEY so it stays off the command line")
     ap.add_argument("--bearer", help="Entra access token for built-in auth")
     ap.add_argument("--write", action="store_true", help="also create a smoke-test ADR (mutating)")
     a = ap.parse_args()

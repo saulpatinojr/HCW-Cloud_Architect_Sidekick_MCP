@@ -114,7 +114,7 @@ echo "MCP endpoint: $(azd env get-value MCP_ENDPOINT)"
 Post-deployment smoke test:
 
 ```bash
-python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)" --key "$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)"
+ADR_MCP_KEY="$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)" python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)"
 ```
 
 ### Enable built-in Entra authentication (preview) instead of the key

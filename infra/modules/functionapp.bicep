@@ -13,6 +13,8 @@ param authMode string
 param instanceMemoryMB int
 param maximumInstanceCount int
 param vnetIntegrationSubnetId string = ''
+@allowed([ '8.0', '10.0' ])
+param dotnetVersion string = '10.0'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageAccountName }
 
@@ -54,7 +56,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         // MCP tool calls are short; the queue worker and timers run on the same app.
         triggers: { http: { perInstanceConcurrency: 16 } }
       }
-      runtime: { name: 'dotnet-isolated', version: '8.0' }
+      runtime: { name: 'dotnet-isolated', version: dotnetVersion }
     }
     siteConfig: {
       minTlsVersion: '1.2'

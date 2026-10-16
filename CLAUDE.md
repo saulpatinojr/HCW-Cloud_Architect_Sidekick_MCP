@@ -1,6 +1,6 @@
 # CLAUDE.md — project instructions for Claude Code
 
-This repository is an **ADR Intelligence MCP Server** on Azure Functions (.NET 8 isolated, MCP extension 1.6.0). Read `README.md` first, then `docs/`.
+This repository is an **ADR Intelligence MCP Server** on Azure Functions (.NET 10 isolated, MCP extension 1.6.0). Read `README.md` first, then `docs/`.
 
 ## Non-negotiables
 - Human-owned ADR fields (title, context, decision, rationale, alternatives, consequences, status, owners, approvers, approvalResult, humanNotes, tags, claims, supersedes, supersededBy) are never written by analyzers. Any code path that writes them must go through `AdrService.ApplyHumanChangeAsync` with a human provenance. Tests in `HumanOwnedFieldProtectionTests` must keep passing.

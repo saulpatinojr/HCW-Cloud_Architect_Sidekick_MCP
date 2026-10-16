@@ -3,7 +3,7 @@
 ## Prerequisites (verify)
 
 ```bash
-dotnet --version            # 8.0.4xx (global.json rolls forward within 8.0)
+dotnet --version            # 10.0.1xx or later 10.0 band (global.json rolls forward within 10.0)
 func --version              # Azure Functions Core Tools 4.x (>= 4.0.7030 required by the MCP extension)
 azurite --version           # 3.x (npm i -g azurite)
 az version                  # Azure CLI 2.6x+

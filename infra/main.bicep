@@ -37,6 +37,10 @@ param cosmosConsistency string = 'Session'
 @allowed([ 2048, 4096 ])
 param instanceMemoryMB int = 2048
 
+@description('.NET isolated worker version for Flex Consumption; must match Directory.Build.props TargetFramework (ADR-0007). 8.0 is a rollback target only until .NET 8 end of support.')
+@allowed([ '8.0', '10.0' ])
+param functionsDotnetVersion string = '10.0'
+
 @description('Maximum Flex Consumption instance count.')
 @minValue(40)
 @maxValue(1000)
@@ -138,6 +142,7 @@ module functionApp './modules/functionapp.bicep' = {
     authMode: authMode
     instanceMemoryMB: instanceMemoryMB
     maximumInstanceCount: maximumInstanceCount
+    dotnetVersion: functionsDotnetVersion
     vnetIntegrationSubnetId: enablePrivateNetworking ? network.?outputs.appSubnetId ?? '' : ''
   }
 }

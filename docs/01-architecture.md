@@ -13,7 +13,7 @@ flowchart LR
     AUTH[App Service Authentication<br/>Entra ID + PRM (preview)<br/>or mcp_extension system key]
   end
 
-  subgraph FA["Function App (Flex Consumption, .NET 8 isolated, user-assigned MI)"]
+  subgraph FA["Function App (Flex Consumption, .NET 10 isolated, user-assigned MI)"]
     MCP[MCP extension<br/>/runtime/webhooks/mcp<br/>Streamable HTTP]
     PIPE[ToolInvocationPipeline<br/>correlation · tenant resolution · authz<br/>binding/validation · idempotency · audit · memory]
     SVC[Application services<br/>AdrService · ChangeProposalService · FileUploadService<br/>TechnologyService · DriftService · ContradictionService · SafetyReviewService]

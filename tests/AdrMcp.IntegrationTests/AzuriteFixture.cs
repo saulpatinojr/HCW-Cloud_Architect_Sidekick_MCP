@@ -9,7 +9,7 @@ namespace AdrMcp.IntegrationTests;
 
 /// <summary>
 /// Uses a running Azurite instance (default ports). Tests are skipped when Azurite is not reachable so the suite stays green
-/// on machines without the emulator; CI starts Azurite as a service container.
+/// on machines without the emulator; CI starts Azurite with <c>--skipApiVersionCheck</c> and requires it (see <see cref="AzuriteFactAttribute"/>).
 /// </summary>
 public sealed class AzuriteFixture
 {
@@ -31,12 +31,16 @@ public sealed class AzuriteFixture
     }
 }
 
-/// <summary>xunit skip helper: facts marked with this attribute are skipped when Azurite is down.</summary>
+/// <summary>
+/// xunit skip helper: facts marked with this attribute are skipped when Azurite is down, unless
+/// <c>ADR_TEST_REQUIRE_AZURITE=true</c> (set in CI) — then they run and fail, so a missing emulator can never pass as green.
+/// </summary>
 public sealed class AzuriteFactAttribute : FactAttribute
 {
     public AzuriteFactAttribute()
     {
-        if (!new AzuriteFixture().Available) Skip = "Azurite is not running on 127.0.0.1:10000/10001 (start with `azurite --silent`).";
+        var required = string.Equals(Environment.GetEnvironmentVariable("ADR_TEST_REQUIRE_AZURITE"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!required && !new AzuriteFixture().Available) Skip = "Azurite is not running on 127.0.0.1:10000/10001 (start with `azurite --silent --skipApiVersionCheck`).";
     }
 }
 

@@ -8,15 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: azd environment name to deploy
+        description: azd environment to deploy (must exist as a protected GitHub environment)
+        type: choice
+        options: [ adr-dev ]
         default: adr-dev
         required: true
 
-permissions:
-  contents: read
-  id-token: write        # OIDC federation to Azure (no long-lived credentials)
-  security-events: write # upload SARIF from scanners
-  checks: write
+# Least privilege: no token permissions by default; each job requests only what it needs.
+permissions: {}
 
 env:
   DOTNET_NOLOGO: true
@@ -26,18 +25,31 @@ jobs:
   build-test:
     name: Build, test, scan
     runs-on: ubuntu-latest
-    services:
-      azurite:
-        image: mcr.microsoft.com/azure-storage/azurite:3.33.0
-        ports: [ "10000:10000", "10001:10001", "10002:10002" ]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read    # gitleaks lists the pull request's commits
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }   # full history for secret scanning
 
-      - uses: actions/setup-dotnet@v4
+      - name: Start Azurite (storage emulator)
+        # The Storage SDK targets service API versions newer than the latest Azurite release, so the emulator runs with
+        # --skipApiVersionCheck (Azurite's documented switch). Production always uses real Azure Storage.
+        run: |
+          docker run -d --name azurite -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite:3.37.0 \
+            azurite -l /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck --disableTelemetry
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/10000) 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/10001) 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs azurite; echo "::error::Azurite did not start"; exit 1
+
+      - uses: actions/setup-dotnet@v6
         with: { global-json-file: global.json }
 
-      - name: Restore
+      - name: Restore (NuGet Audit fails on known vulnerabilities, direct and transitive)
         run: dotnet restore AdrMcp.sln
 
       - name: Build (Release, warnings as errors for nullable)
@@ -47,22 +59,20 @@ jobs:
         run: dotnet test tests/AdrMcp.UnitTests -c Release --no-build --logger "trx;LogFileName=unit.trx" --results-directory TestResults --collect:"XPlat Code Coverage"
 
       - name: Integration tests (Azurite)
+        env:
+          ADR_TEST_REQUIRE_AZURITE: "true"   # fail, never skip, if the emulator is unreachable
         run: dotnet test tests/AdrMcp.IntegrationTests -c Release --no-build --logger "trx;LogFileName=integration.trx" --results-directory TestResults
 
-      - name: Publish test results
+      - name: Upload test results and coverage
         if: always()
-        uses: dorny/test-reporter@v1
-        with: { name: tests, path: "TestResults/*.trx", reporter: dotnet-trx, fail-on-error: true }
-
-      - name: Dependency vulnerability scan (fails on known CVEs)
-        run: |
-          dotnet list AdrMcp.sln package --vulnerable --include-transitive 2>&1 | tee vuln.txt
-          if grep -Eq "has the following vulnerable packages|Severity" vuln.txt; then echo "::error::Vulnerable packages found"; exit 1; fi
+        uses: actions/upload-artifact@v7
+        with: { name: test-results, path: TestResults, retention-days: 7, if-no-files-found: ignore }
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"   # findings fail the job and appear in the log; no pull-requests: write needed
 
       - name: Bicep build + lint
         run: |
@@ -77,15 +87,30 @@ jobs:
 
       - name: Publish Functions package
         run: dotnet publish src/AdrMcp.Functions -c Release -o publish/api
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: api, path: publish/api, retention-days: 7 }
+
+      - name: Explain skipped deploy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ADR_DEPLOY_ENABLED != 'true'
+        run: |
+          msg="Deploy is not enabled for this repository. Create the protected adr-dev environment and OIDC identity first, then set the repository variable ADR_DEPLOY_ENABLED=true (docs/07-tests-and-ci.md)."
+          echo "::notice title=Deploy skipped::$msg"
+          echo "**Deploy skipped:** $msg" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: Provision + deploy (OIDC)
     needs: build-test                      # blocked unless every required check above passed
-    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    # Explicit opt-in (repository variable) so forks and unconfigured clones never deploy, and only main is deployable.
+    if: vars.ADR_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write                      # OIDC federation to Azure (no long-lived credentials)
     environment: ${{ github.event.inputs.environment || 'adr-dev' }}   # protected environment: required reviewers = human approval gate
+    concurrency:                           # one deployment per environment at a time; never cancel one mid-flight
+      group: deploy-${{ github.event.inputs.environment || 'adr-dev' }}
+      cancel-in-progress: false
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}          # app registration with federated credential for this repo/environment
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -95,19 +120,24 @@ jobs:
       ADR_AUTH_MODE: ${{ vars.ADR_AUTH_MODE || 'FunctionKey' }}
       ADR_PRIVATE_NETWORKING: ${{ vars.ADR_PRIVATE_NETWORKING || 'false' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Preflight (required configuration)
+        run: |
+          missing=""
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_LOCATION; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then echo "::error::ADR_DEPLOY_ENABLED is true but these variables are empty:$missing"; exit 1; fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with: { global-json-file: global.json }
       - uses: Azure/setup-azd@v2
       - name: Azure login (federated identity, no secrets)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       - name: azd login (federated)
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
-      - name: What-if (plan) — review in job log before approving the environment
+      - name: What-if (plan, recorded in the job log; the environment approval happens before this job starts)
         run: |
           az deployment sub what-if --location "$AZURE_LOCATION" --template-file infra/main.bicep \
             --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" authMode="$ADR_AUTH_MODE" enablePrivateNetworking="$ADR_PRIVATE_NETWORKING"

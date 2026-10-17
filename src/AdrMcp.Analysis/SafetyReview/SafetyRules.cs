@@ -124,9 +124,11 @@ public sealed partial class EolTechnologyRule : SafetyRuleBase
     /// </summary>
     private static IEnumerable<SafetyFinding> EvaluateDotNet(string text, DateOnly today, Func<string, SafetyFinding> create)
     {
-        var mentions = new List<(DotNetRelease Release, string Excerpt)>();
-        foreach (Match m in DotNetVersion().Matches(text))
-            if (Resolve(m) is { } release) mentions.Add((release, m.Value.Trim()));
+        var mentions = DotNetVersion().Matches(text)
+            .Select(m => (Release: Resolve(m), Excerpt: m.Value.Trim()))
+            .Where(x => x.Release is not null)
+            .Select(x => (Release: x.Release!, x.Excerpt))
+            .ToList();
         if (mentions.Count == 0) yield break;
 
         var target = DotNetReleases.Where(r => r.Lts && r.EndOfSupport.AddDays(-DotNetEolWarningWindowDays) > today).MaxBy(r => r.Major);

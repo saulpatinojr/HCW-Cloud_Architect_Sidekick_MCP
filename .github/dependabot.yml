@@ -6,6 +6,22 @@ updates:
     groups:
       azure-sdk: { patterns: [ "Azure.*", "Microsoft.Azure.*" ] }
       microsoft-extensions: { patterns: [ "Microsoft.Extensions.*" ] }
+    ignore:
+      # Application Insights SDK 3.x removes types (ITelemetryInitializer, ITelemetryModule) that
+      # Microsoft.Azure.Functions.Worker.ApplicationInsights 2.x still loads, so the worker crashes at startup.
+      # Revisit when moving the worker to OpenTelemetry (Microsoft.Azure.Functions.Worker.OpenTelemetry).
+      - dependency-name: "Microsoft.ApplicationInsights.WorkerService"
+        update-types: [ "version-update:semver-major" ]
   - package-ecosystem: github-actions
     directory: "/"
     schedule: { interval: weekly }
+    groups:
+      github-actions: { patterns: [ "*" ] }   # one PR per week instead of one per action
+  # samples/evidence is demo evidence for the detectors, not a dependency of this project: never update it.
+  # `ignore` is the only option that also stops security-update PRs; the limit of 0 keeps version updates off.
+  - package-ecosystem: npm
+    directory: "/samples/evidence"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"

@@ -22,4 +22,4 @@ Please do **not** open a public issue for security problems. Use GitHub's privat
 
 ## Hardening baseline
 
-See `docs/04-security-threat-model.md`. Never commit `local.settings.json`, `.azure/`, keys, SAS tokens or connection strings; CI runs gitleaks and `dotnet list package --vulnerable` on every pull request.
+See `docs/04-security-threat-model.md`. Never commit `local.settings.json`, `.azure/`, keys, SAS tokens or connection strings; CI runs gitleaks and NuGet Audit (restore fails on any known vulnerable package) on every pull request.

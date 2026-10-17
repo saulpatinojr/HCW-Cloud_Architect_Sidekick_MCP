@@ -9,8 +9,8 @@ Thank you for helping improve the ADR Intelligence MCP Server.
 
 ## Development setup
 ```bash
-git clone https://github.com/saulpatinojr/HCW-Cloud_Architect_Sidekick_MCP.git
-cd HCW-Cloud_Architect_Sidekick_MCP
+git clone https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP.git
+cd Proj-Cloud_Architect_Sidekick_MCP
 npm i -g azure-functions-core-tools@4 azurite
 cp src/AdrMcp.Functions/local.settings.json.example src/AdrMcp.Functions/local.settings.json
 dotnet build AdrMcp.sln

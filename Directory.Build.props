@@ -10,5 +10,14 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Deterministic>true</Deterministic>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- NuGet Audit: check direct and transitive packages against the GitHub Advisory Database on every restore. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+  <!-- In CI (GitHub Actions sets CI=true) any known vulnerability fails the restore, and so does missing
+       vulnerability data (NU1900/NU1905), so the check fails closed; locally these stay warnings. -->
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <WarningsAsErrors>$(WarningsAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904;NU1905</WarningsAsErrors>
   </PropertyGroup>
 </Project>

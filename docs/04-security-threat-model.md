@@ -79,7 +79,7 @@ Guarantees and limits: findings record type, severity, line/column, action, dete
 | Oversized payload DoS | Huge arguments, many uploads | 2 MB argument cap, schema maxLength, 50 MiB file cap, platform throttling, Flex max instances, Cosmos retry limits | Volumetric DoS → Front Door/WAF recommended |
 | SAS leakage | Upload URL logged or shared | Single blob, Create+Write only, 15 min, HTTPS, no list/read; redactor strips `sig=`; URL only in the tool response | Attacker overwrites blob within 15 min → hash check at register detects mismatch |
 | Replay attacks | Re-sending `tools/call` | Idempotency keys for mutating tools; registration single-use; approvals check status and field hashes | Read replays harmless |
-| Dependency / supply chain | Vulnerable NuGet packages, malicious actions | Central pinned versions; `dotnet list package --vulnerable` in CI; Dependabot; pinned GitHub Actions by major; Newtonsoft pinned ≥ 13.0.1 | Zero-days |
+| Dependency / supply chain | Vulnerable NuGet packages, malicious actions | Central pinned versions; NuGet Audit on every restore (CI fails on any known vulnerable direct or transitive package); Dependabot; pinned GitHub Actions by major; job-scoped least-privilege workflow token permissions; Newtonsoft pinned ≥ 13.0.1 | Zero-days |
 | Unauthorized decision changes | Analyzer or agent rewriting decisions | Type-separated human-owned record; human-provenance-only write path; proposals + approvals; content hash + snapshots; tests | Admin with legitimate rights — audited |
 
 ## 10. Audit trail

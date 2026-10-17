@@ -39,7 +39,6 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 | Microsoft.ApplicationInsights.WorkerService | MIT (Microsoft) |
 | Newtonsoft.Json 13.0.4 (required by the Cosmos SDK build check; not used for serialization) | MIT (James Newton-King) |
 | xunit, xunit.runner.visualstudio | Apache-2.0 |
-| NSubstitute | BSD-3-Clause |
 | coverlet.collector | MIT |
 
 ## Reference material (no code copied)

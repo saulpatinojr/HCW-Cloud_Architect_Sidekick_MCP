@@ -14,7 +14,7 @@ This repository is an **ADR Intelligence MCP Server** on Azure Functions (.NET 8
 dotnet build AdrMcp.sln -c Release
 dotnet test AdrMcp.sln
 cp src/AdrMcp.Functions/local.settings.json.example src/AdrMcp.Functions/local.settings.json   # once
-azurite --silent --location .azurite &            # Blob/Queue emulator
+azurite --silent --location .azurite --skipApiVersionCheck &   # Blob/Queue emulator (SDK API version is newer than Azurite's)
 (cd src/AdrMcp.Functions && func start --port 7071)
 python3 scripts/smoke-test.py --url http://localhost:7071/runtime/webhooks/mcp --write
 bicep build infra/main.bicep --stdout > /dev/null && bicep lint infra/main.bicep

@@ -28,6 +28,8 @@ cp src/AdrMcp.Functions/local.settings.json.example src/AdrMcp.Functions/local.s
 mkdir -p .azurite && azurite --silent --location .azurite --skipApiVersionCheck
 ```
 
+`--skipApiVersionCheck` is required. Azure.Storage.Blobs 12.30.1 sends service API version 2026-10-06, which no Azurite release supports yet (verified 2026-10-16 with Azurite 3.37.0).
+
 ## Build
 
 ```bash
@@ -112,7 +114,7 @@ echo "MCP endpoint: $(azd env get-value MCP_ENDPOINT)"
 Post-deployment smoke test:
 
 ```bash
-python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)" --key "$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)"
+ADR_MCP_KEY="$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)" python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)"
 ```
 
 ### Enable built-in Entra authentication (preview) instead of the key
@@ -135,7 +137,7 @@ Audit events: Cosmos container `audit` (Data Explorer or `az cosmosdb sql contai
 ## Clean up safely
 
 ```bash
-azd down --purge            # deletes the resource group and purges Key Vault (soft-delete) — irreversible; evidence under an immutability policy blocks deletion until the retention period ends
+azd down --purge            # deletes the resource group — irreversible. Key Vault has purge protection, so it stays soft-deleted for 90 days and its name stays reserved (re-provisioning the same environment within that window needs the vault recovered). Evidence under an immutability policy blocks deletion until the retention period ends
 # Alternative (review first):
 az group delete --name "$RG" --no-wait
 ```

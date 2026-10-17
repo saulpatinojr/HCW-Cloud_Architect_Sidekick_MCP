@@ -17,7 +17,7 @@ Checklist (report each as pass/fail with file:line):
 - Input: DTO binding with length/pattern limits; schemas keep `additionalProperties:false`; no client-supplied filesystem paths or URLs; sizes capped.
 - Output: errors pass through `SensitiveDataRedactor`; excerpts truncated and sanitized; no stack traces to clients.
 - Content safety: new file types still routed through `IContentSafetyService`; prompt-injection banner preserved.
-- Dependencies: `dotnet list AdrMcp.sln package --vulnerable --include-transitive` clean; versions pinned in `Directory.Packages.props`.
+- Dependencies: restore shows no NuGet Audit warnings (NU1900–NU1905; they are errors in CI) and the CI host-extension check (generated `WorkerExtensions` project, which NuGet Audit settings do not reach) is clean; versions pinned in `Directory.Packages.props`; non-GitHub actions pinned to commit SHAs.
 - Infra: TLS 1.2, HTTPS only, public access disabled where `enablePrivateNetworking`, least-privilege role ids, Key Vault RBAC, purge protection.
 
 Finish with a severity-ordered list and the exact fix for each failure. Do not modify files.

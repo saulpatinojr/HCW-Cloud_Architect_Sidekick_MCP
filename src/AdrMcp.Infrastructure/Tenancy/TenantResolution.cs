@@ -124,7 +124,7 @@ public sealed class RoleAuthorizationService : IAuthorizationService
     {
         var ws = string.IsNullOrWhiteSpace(requested) ? ctx.DefaultWorkspaceId : requested.Trim();
         if (string.IsNullOrWhiteSpace(ws)) throw new ValidationException("workspaceId is required.");
-        if (ws.Length > 64 || !ws.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.')) throw new ValidationException("workspaceId contains invalid characters.");
+        if (!Identifiers.IsValid(ws)) throw new ValidationException("workspaceId contains invalid characters.");
         if (!ctx.CanAccessWorkspace(ws)) throw new ForbiddenException($"Workspace '{ws}' is not accessible to this principal.", ErrorCodes.TenantMismatch);
         return ws;
     }

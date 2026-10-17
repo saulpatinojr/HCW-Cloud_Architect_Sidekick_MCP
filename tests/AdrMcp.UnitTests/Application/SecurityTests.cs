@@ -196,6 +196,15 @@ public class TenantIsolationTests
     }
 
     [Fact]
+    public async Task Entra_enrollment_cannot_widen_the_function_key_binding()
+    {
+        // Auth:Tenants describes Entra principals; the shared-key principal keeps exactly its Auth:TenantWorkspaces list.
+        var host = new TestHost(s => { s["Auth:Tenants:0:Id"] = EntraTenant; s["Auth:Tenants:0:MapTo"] = "tenant-a"; s["Auth:Tenants:0:Workspaces:0"] = "*"; });
+        var r = await host.CallAsync("adr_list", new { workspaceId = "ws-9" });
+        Assert.Equal(ErrorCodes.TenantMismatch, ErrorCode(r));
+    }
+
+    [Fact]
     public async Task FunctionKey_mode_ignores_spoofed_principal_header()
     {
         var host = new TestHost();

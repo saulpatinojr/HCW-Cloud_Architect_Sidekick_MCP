@@ -7,3 +7,4 @@
 /src/AdrMcp.Application/Tools/      @saulpatinojr
 /infra/                             @saulpatinojr
 /.github/                           @saulpatinojr
+/.gitleaksignore                    @saulpatinojr   # suppresses secret-scan findings

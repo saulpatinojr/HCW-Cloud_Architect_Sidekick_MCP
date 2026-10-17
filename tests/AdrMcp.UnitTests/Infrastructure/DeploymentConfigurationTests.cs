@@ -2,7 +2,12 @@ using AdrMcp.Application.Options;
 using AdrMcp.Functions.Telemetry;
 using AdrMcp.Infrastructure;
 using AdrMcp.Infrastructure.Options;
+using System.Security.Cryptography;
+using AdrMcp.Functions.Http;
+using AdrMcp.Infrastructure.Tenancy;
 using Azure.Identity;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,7 +17,7 @@ namespace AdrMcp.UnitTests.Infrastructure;
 
 public class PrincipalHashSaltValidationTests
 {
-    private const string GeneratedSalt = "q3Zp1vJ0n8mXc2Lr7TfYw4Bd9Hs6Ka5UeGo0NiRtVb1MxCzQy8WjPl2Fh4Ds7Ag3"; // shape of `openssl rand -base64 48`
+    private static readonly string GeneratedSalt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)); // same as `openssl rand -base64 48`
 
     [Theory]
     [InlineData("")]
@@ -95,5 +100,41 @@ public class ApplicationInsightsAuthenticationTests
     {
         Assert.True(ApplicationInsightsAuthentication.TryCreateCredential(value, out var credential));
         Assert.IsType<ManagedIdentityCredential>(credential);
+    }
+}
+
+public class EntraReadinessTests
+{
+    [Theory]
+    [InlineData("FunctionKey", false, 200)]
+    [InlineData("EntraBuiltIn", true, 200)]
+    [InlineData("EntraBuiltIn", false, 503)]   // would reject every call: fail the deploy job's health wait instead
+    public void Health_reports_unavailable_when_entra_mode_lacks_platform_authentication(string mode, bool platformAuth, int expected)
+    {
+        var health = new HealthFunction(Options.Create(new AuthOptions { Mode = mode }), new PlatformAuthentication(platformAuth));
+        var result = Assert.IsAssignableFrom<ObjectResult>(health.Run(new DefaultHttpContext().Request));
+        Assert.Equal(expected, result.StatusCode ?? StatusCodes.Status200OK);
+    }
+
+    [Fact]
+    public void Health_function_activates_from_the_app_composition()
+    {
+        // The isolated worker creates function classes with ActivatorUtilities from the app's service provider.
+        var health = ActivatorUtilities.CreateInstance<HealthFunction>(new AdrMcp.UnitTests.Support.TestHost().Services);
+        Assert.IsType<OkObjectResult>(health.Run(new DefaultHttpContext().Request));
+    }
+
+    [Fact]
+    public void Infrastructure_never_sets_the_platform_authentication_flag()
+    {
+        // WEBSITE_AUTH_ENABLED must come from the platform. Setting it as an app setting would let Entra mode trust a forged
+        // X-MS-CLIENT-PRINCIPAL header while App Service Authentication is off.
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "AdrMcp.sln"))) root = root.Parent;
+        Assert.NotNull(root);
+        var offenders = Directory.EnumerateFiles(Path.Combine(root.FullName, "infra"), "*.*", SearchOption.AllDirectories)
+            .Where(f => File.ReadAllText(f).Contains(PlatformAuthentication.EnabledSetting, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Empty(offenders);
     }
 }

@@ -95,7 +95,7 @@ The app refuses to start with durable (Cosmos) persistence if `Adr:PrincipalHash
 Preview before applying (recommended for existing environments):
 
 ```bash
-az deployment sub what-if --location eastus2 --template-file infra/main.bicep --parameters environmentName=adr-dev location=eastus2
+azd provision --preview     # what-if with the same parameters azd provision uses; runs no hooks and changes nothing
 ```
 
 ## Deploy

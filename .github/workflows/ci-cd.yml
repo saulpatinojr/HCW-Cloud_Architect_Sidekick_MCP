@@ -167,11 +167,10 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       - name: azd login (federated)
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
-      - name: What-if (plan, recorded in the job log; the environment approval happens before this job starts)
-        run: |
-          az deployment sub what-if --location "$AZURE_LOCATION" --template-file infra/main.bicep \
-            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" authMode="$ADR_AUTH_MODE" enablePrivateNetworking="$ADR_PRIVATE_NETWORKING" \
-              entraClientId="$ADR_ENTRA_CLIENT_ID" entraTenantId="$ADR_ENTRA_TENANT_ID" entraAllowedClientIds="$ADR_ENTRA_ALLOWED_CLIENT_IDS"
+      - name: Preview (what-if plan, recorded in the job log; the environment approval happens before this job starts)
+        # Resolves infra/main.parameters.json exactly as the next step does, so the plan matches what is applied.
+        # azd skips provision hooks in preview mode, so postprovision.sh does not run here.
+        run: azd provision --preview --no-prompt
       - name: Provision
         run: azd provision --no-prompt
       - name: Deploy
@@ -185,6 +184,7 @@ jobs:
       - name: Wait for the app to start
         # The health probe is anonymous in both auth modes. If it never answers, the worker failed at startup: check the logs,
         # e.g. an unresolved Key Vault reference for Adr__PrincipalHashSalt (fixed by restarting once the secret is readable).
+        # A 503 in Entra mode means the worker does not see App Service Authentication (WEBSITE_AUTH_ENABLED) and would reject every call.
         run: |
           URL=$(azd env get-value MCP_ENDPOINT); BASE="${URL%/runtime/webhooks/mcp}"
           for _ in $(seq 1 30); do
@@ -213,4 +213,4 @@ jobs:
           URL=$(azd env get-value MCP_ENDPOINT)
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' -d '{}' "$URL" || true)
           [ "$code" = "401" ] || { echo "::error::Unauthenticated POST to the MCP endpoint returned $code, expected 401. Check App Service Authentication (authsettingsV2)."; exit 1; }
-          echo "::notice title=Tool smoke test skipped::EntraBuiltIn needs a user token; run scripts/smoke-test.py --bearer <token> manually (docs/06-claude-connection.md)."
+          echo "::notice title=Tool smoke test skipped::EntraBuiltIn needs a user token; run ADR_MCP_BEARER=<token> scripts/smoke-test.py manually (docs/06-claude-connection.md)."

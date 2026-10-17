@@ -18,6 +18,7 @@ updates:
     groups:
       github-actions: { patterns: [ "*" ] }   # one PR per week instead of one per action
   # samples/evidence is demo evidence for the detectors, not a dependency of this project: never update it.
+  # It is never installed. If a Dependabot alert flags it anyway, bump that fixture entry by hand to close it.
   # `ignore` is the only option that also stops security-update PRs; the limit of 0 keeps version updates off.
   - package-ecosystem: npm
     directory: "/samples/evidence"

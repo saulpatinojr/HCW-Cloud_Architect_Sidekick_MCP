@@ -23,7 +23,7 @@ param(
     [Parameter(Mandatory = $true)][string]$SubscriptionId,
     [string]$TenantId = '',   # only needed for device-code sign-in when your account spans several tenants
     [string]$Location = 'southcentralus',
-    [string]$Repo = 'saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP',   # exact case: it is part of the OIDC subject
+    [string]$Repo = 'saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP',   # owner/name; the OIDC subject itself is read from GitHub
     [string]$Environment = 'adr-dev',
     [string]$AppName = ''
 )
@@ -73,6 +73,24 @@ try {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool is not installed (Azure Cloud Shell has both)." }
     }
 
+    Write-Host "== GitHub ($Repo)"
+    if (-not (Test-Cli { gh auth status })) {
+        # gh's web flow is also a one-time code: it prints the code and https://github.com/login/device.
+        gh auth login --hostname github.com --git-protocol https --web; Assert-Ok 'gh auth login'
+    }
+
+    # Entra matches the federated credential's subject exactly, so it is taken from GitHub rather than built here.
+    # Repositories created after 2026-07-15 get immutable subjects (repo:owner@<owner-id>/name@<repo-id>);
+    # older ones keep repo:owner/name.
+    $useDefault = gh api "repos/$Repo/actions/oidc/customization/sub" --jq '.use_default'; Assert-Ok 'gh api OIDC subject template'
+    if ($useDefault -eq 'false') {
+        throw "$Repo uses a custom OIDC subject template; create the federated credential for that template by hand."
+    }
+    $subjectPrefix = gh api "repos/$Repo/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty'; Assert-Ok 'gh api OIDC subject template'
+    if (-not $subjectPrefix) { $subjectPrefix = "repo:$Repo" }
+    $Subject = "${subjectPrefix}:environment:$Environment"
+    Write-Host "  OIDC subject: $Subject"
+
     Write-Host '== Azure'
     if (-not (Test-Cli { az account show })) {
         Write-Host '  signing in with a device code: open https://microsoft.com/devicelogin and enter the code below'
@@ -102,18 +120,27 @@ try {
         Write-Host '  created service principal'
     }
 
-    $Subject = "repo:${Repo}:environment:$Environment"
+    $CredentialName = "github-$Environment"
     $existing = az ad app federated-credential list --id $AppId --query "[?subject=='$Subject'].name" -o tsv; Assert-Ok 'az ad app federated-credential list'
     if (-not $existing) {
         $credential = @{
-            name      = "github-$Environment"
             issuer    = 'https://token.actions.githubusercontent.com'
             subject   = $Subject
             audiences = @('api://AzureADTokenExchange')
-        } | ConvertTo-Json -Compress
-        $credentialFile = Write-WorkFile 'federated-credential.json' $credential
-        az ad app federated-credential create --id $AppId --parameters "@$credentialFile" | Out-Null; Assert-Ok 'az ad app federated-credential create'
-        Write-Host "  created federated credential for $Subject"
+        }
+        # A credential with our name but another subject (e.g. the pre-immutable format) is corrected in place.
+        $staleId = az ad app federated-credential list --id $AppId --query "[?name=='$CredentialName'].id" -o tsv; Assert-Ok 'az ad app federated-credential list'
+        if ($staleId) {
+            $credentialFile = Write-WorkFile 'federated-credential.json' ($credential | ConvertTo-Json -Compress)   # name can't be changed
+            az ad app federated-credential update --id $AppId --federated-credential-id $staleId --parameters "@$credentialFile" | Out-Null
+            Assert-Ok 'az ad app federated-credential update'
+            Write-Host "  updated federated credential $CredentialName to $Subject"
+        } else {
+            $credential.name = $CredentialName
+            $credentialFile = Write-WorkFile 'federated-credential.json' ($credential | ConvertTo-Json -Compress)
+            az ad app federated-credential create --id $AppId --parameters "@$credentialFile" | Out-Null; Assert-Ok 'az ad app federated-credential create'
+            Write-Host "  created federated credential for $Subject"
+        }
     } else {
         Write-Host "  federated credential for $Subject exists"
     }
@@ -141,12 +168,7 @@ try {
     Set-RoleAssignment 'Contributor'
     Set-RoleAssignment 'Role Based Access Control Administrator' $Condition
 
-    Write-Host "== GitHub ($Repo)"
-    if (-not (Test-Cli { gh auth status })) {
-        # gh's web flow is also a one-time code: it prints the code and https://github.com/login/device.
-        gh auth login --hostname github.com --git-protocol https --web; Assert-Ok 'gh auth login'
-    }
-
+    Write-Host '== GitHub environment and variables'
     $ReviewerId = gh api user --jq .id; Assert-Ok 'gh api user'
     $environmentBody = @{
         reviewers                = @(@{ type = 'User'; id = [long]$ReviewerId })

@@ -1,8 +1,11 @@
 using System.Text;
 using System.Text.Json;
+using AdrMcp.Application.Abstractions;
 using AdrMcp.Application.Common;
 using AdrMcp.Domain.Errors;
 using AdrMcp.UnitTests.Support;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AdrMcp.UnitTests.Application;
 
@@ -76,13 +79,20 @@ public class TenantIsolationTests
 
     private const string EntraTenant = "11111111-1111-1111-1111-111111111111";
 
-    private static TestHost EntraHost(bool platformAuthEnabled = true, string? defaultRole = null) => new(s =>
+    private const string OtherTenant = "22222222-2222-2222-2222-222222222222";
+
+    // Enrolls the tenant in the array form, the one Linux app settings can express (Auth__Tenants__0__Id), as infra/ does.
+    private static TestHost EntraHost(bool platformAuthEnabled = true, string? defaultRole = null, bool enroll = true, Action<Dictionary<string, string?>>? configure = null) => new(s =>
     {
         s["Auth:Mode"] = "EntraBuiltIn";
-        s["Auth:TenantWorkspaces:" + EntraTenant + ":0"] = "default";
+        if (enroll) s["Auth:Tenants:0:Id"] = EntraTenant;
         if (platformAuthEnabled) s["WEBSITE_AUTH_ENABLED"] = "True"; // injected by App Service Authentication
         if (defaultRole is not null) s["Auth:DefaultRoleWhenNoAppRoles"] = defaultRole;
+        configure?.Invoke(s);
     });
+
+    private static Dictionary<string, string> Author(string tid, string oid = "u-author")
+        => PrincipalHeader(("tid", tid), ("oid", oid), ("roles", "Adr.Author"));
 
     private static Dictionary<string, string> PrincipalHeader(params (string Typ, string Val)[] claims)
     {
@@ -131,6 +141,58 @@ public class TenantIsolationTests
         var host = EntraHost(defaultRole: "Reader");
         var r = await host.CallAsync("adr_list", new { }, PrincipalHeader(("tid", EntraTenant), ("oid", "u3")));
         Assert.True(r.GetProperty("ok").GetBoolean(), r.ToString());
+    }
+
+    [Fact]
+    public async Task Enrolled_tenant_uses_only_its_configured_workspaces()
+    {
+        var host = EntraHost(configure: s => { s["Auth:Tenants:0:Workspaces:0"] = "team-a"; s["Auth:Tenants:0:Workspaces:1"] = "team-b"; });
+        var own = await host.CallAsync("adr_list", new { workspaceId = "team-b" }, Author(EntraTenant));
+        Assert.True(own.GetProperty("ok").GetBoolean(), own.ToString());
+        var other = await host.CallAsync("adr_list", new { workspaceId = "default" }, Author(EntraTenant));
+        Assert.Equal(ErrorCodes.TenantMismatch, ErrorCode(other));
+    }
+
+    [Fact]
+    public async Task MapTo_stores_the_tenant_under_its_mapped_id()
+    {
+        var host = EntraHost(configure: s => s["Auth:Tenants:0:MapTo"] = "contoso");
+        var create = await host.CallAsync("adr_create", new { fields = new { title = "Mapped", decision = "D" } }, Author(EntraTenant));
+        Assert.True(create.GetProperty("ok").GetBoolean(), create.ToString());
+        Assert.Single(host.Store.RawJson("adrs", "contoso|default"));
+        Assert.Empty(host.Store.RawJson("adrs", EntraTenant + "|default"));
+    }
+
+    [Fact]
+    public async Task Unenrolled_tenant_is_refused_once_any_tenant_is_enrolled()
+    {
+        var r = await EntraHost().CallAsync("adr_list", new { }, Author(OtherTenant));
+        Assert.Equal(ErrorCodes.Forbidden, ErrorCode(r));
+    }
+
+    [Fact]
+    public async Task Without_enrollment_each_tenant_keeps_its_own_partition()
+    {
+        var host = EntraHost(enroll: false);
+        var create = await host.CallAsync("adr_create", new { fields = new { title = "Mine", decision = "D" } }, Author(OtherTenant));
+        Assert.True(create.GetProperty("ok").GetBoolean(), create.ToString());
+        Assert.Single(host.Store.RawJson("adrs", OtherTenant + "|default"));
+    }
+
+    [Fact]
+    public async Task Dictionary_form_still_configures_workspaces_for_local_json()
+    {
+        var host = EntraHost(enroll: false, configure: s => s["Auth:TenantWorkspaces:" + EntraTenant + ":0"] = "team-json");
+        var r = await host.CallAsync("adr_list", new { workspaceId = "team-json" }, Author(EntraTenant));
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.ToString());
+    }
+
+    [Fact]
+    public void Invalid_tenant_enrollment_fails_at_startup()
+    {
+        var host = EntraHost(configure: s => s["Auth:Tenants:1:Id"] = "contoso.onmicrosoft.com");
+        var ex = Assert.Throws<OptionsValidationException>(() => host.Services.GetRequiredService<ITenantResolver>());
+        Assert.Contains("Auth:Tenants:1:Id", ex.Message);
     }
 
     [Fact]

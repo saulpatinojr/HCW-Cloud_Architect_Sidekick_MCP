@@ -84,12 +84,28 @@ public sealed class AuthOptions
     {
         ["Adr.Reader"] = "Reader", ["Adr.Author"] = "Author", ["Adr.Approver"] = "Approver", ["Adr.Admin"] = "Admin"
     };
-    /// <summary>Entra tenant id (tid claim) -> ADR tenant id. Empty map means use tid directly.</summary>
+    /// <summary>Entra tenant id (tid claim) -> ADR tenant id. Any entry here or in <see cref="Tenants"/> enrolls tenants: others are refused.
+    /// Keys are GUIDs, which Linux app setting names cannot hold; use <see cref="Tenants"/> in Azure.</summary>
     public Dictionary<string, string> TenantMap { get; set; } = new();
-    /// <summary>ADR tenant id -> workspaces the tenant may use. "*" allows any. Workspace membership by group is a later-phase feature.</summary>
+    /// <summary>ADR tenant id -> workspaces the tenant may use. "*" allows any. Workspace membership by group is a later-phase feature.
+    /// For an Entra tenant whose ADR tenant id is its GUID, use <see cref="Tenants"/> (Linux app setting names cannot hold a GUID).</summary>
     public Dictionary<string, string[]> TenantWorkspaces { get; set; } = new();
+    /// <summary>Enrolled Entra tenants in a form Linux app settings can express: Auth__Tenants__0__Id=&lt;tid&gt;, optional
+    /// Auth__Tenants__0__MapTo and Auth__Tenants__0__Workspaces__0. Merged with the dictionaries by <see cref="TenantDirectory"/>.</summary>
+    public List<TenantEnrollment> Tenants { get; set; } = new();
     public string DefaultWorkspaceId { get; set; } = "default";
     /// <summary>Role granted to an Entra principal that carries no mapped app role. "None" (default) grants nothing, so every caller
     /// needs an assigned app role (least privilege); set "Reader" to let any authenticated caller in the tenant read.</summary>
     public string DefaultRoleWhenNoAppRoles { get; set; } = "None";
+}
+
+/// <summary>One enrolled Entra tenant. See <see cref="AuthOptions.Tenants"/>.</summary>
+public sealed class TenantEnrollment
+{
+    /// <summary>Entra tenant ID (the tid claim).</summary>
+    public string Id { get; set; } = "";
+    /// <summary>ADR tenant ID to store this tenant's data under; empty means the tid itself.</summary>
+    public string? MapTo { get; set; }
+    /// <summary>Workspaces the tenant may use ("*" allows any); empty means <see cref="AuthOptions.DefaultWorkspaceId"/>.</summary>
+    public string[] Workspaces { get; set; } = Array.Empty<string>();
 }

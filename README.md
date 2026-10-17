@@ -7,7 +7,7 @@
 [![CI/CD](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml)
 [![CodeQL](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml/badge.svg)](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Azure Functions](https://img.shields.io/badge/Azure%20Functions-Flex%20Consumption-0078D4?logo=azurefunctions&logoColor=white)](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-000000)](https://modelcontextprotocol.io/)
 [![Bicep](https://img.shields.io/badge/IaC-Bicep-0078D4)](infra/)
@@ -49,13 +49,13 @@ flowchart LR
 - **Transport**: Streamable HTTP at `https://<app>.azurewebsites.net/runtime/webhooks/mcp` (SSE fallback at `/sse`).
 - **Auth**: `mcp_extension` system key header by default, or Azure built-in Entra authentication (preview) for OAuth-based clients.
 - **Identity**: user-assigned managed identity for every data-plane call; no connection strings, no account keys.
-- **Hosting**: Azure Functions **Flex Consumption**, .NET 8 isolated worker, MCP extension 1.6.0 (GA).
+- **Hosting**: Azure Functions **Flex Consumption**, .NET 10 (LTS) isolated worker, MCP extension 1.6.0 (GA).
 
 More detail: [Architecture](docs/01-architecture.md) · [Security & threat model](docs/04-security-threat-model.md) · [Decisions](docs/adr/).
 
 ## Quick start (local, no Azure subscription)
 
-Prerequisites: .NET 8 SDK, Node.js 20+, Python 3.9+.
+Prerequisites: .NET 10 SDK (10.0.1xx), Node.js 20+, Python 3.9+.
 
 ```bash
 npm i -g azure-functions-core-tools@4 azurite

@@ -1,6 +1,6 @@
 # GitHub Copilot instructions
 
-This repository is an ADR Intelligence **MCP server** on Azure Functions (.NET 8 isolated, Azure Functions MCP extension). Follow `CLAUDE.md` for conventions; the same rules apply to Copilot.
+This repository is an ADR Intelligence **MCP server** on Azure Functions (.NET 10 isolated, Azure Functions MCP extension). Follow `CLAUDE.md` for conventions; the same rules apply to Copilot.
 
 - Never write code that modifies human-owned ADR fields outside `AdrService.ApplyHumanChangeAsync`; analyzers only update `ObservedState`.
 - Tenant and workspace always come from the resolved principal, never from tool arguments.

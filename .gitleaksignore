@@ -1,0 +1,16 @@
+# Reviewed gitleaks false positives in the initial commit (e2c9547). Each line is an exact finding fingerprint
+# (commit:file:rule:line), so it suppresses only that finding; anything new still fails the scan. Push and pull-request
+# scans cover only new commits; manually dispatched runs scan the full history and reach these.
+#   rbac.bicep 21-22: Azure built-in role definition IDs (Key Vault Secrets User / Officer), public GUIDs.
+#   SensitiveDataRedactor.cs 20: the redactor's replacement text, no key material.
+#   Examples.cs 11 and docs/03-mcp-contracts.md 2698 (generated from it): sample idempotencyKey in a tool example.
+#   UploadAndSafetyTests.cs 60-61: deliberate fake secrets for the secret-scanner test (truncated PEM, AWS's documented
+#   AKIAIOSFODNN7EXAMPLE, placeholder-patterned Stripe/GitHub tokens).
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:infra/modules/rbac.bicep:generic-api-key:21
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:infra/modules/rbac.bicep:generic-api-key:22
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:src/AdrMcp.Application/Common/SensitiveDataRedactor.cs:private-key:20
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:tests/AdrMcp.UnitTests/tools/AdrMcp.DocGen/Examples.cs:generic-api-key:11
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:tools/AdrMcp.DocGen/Examples.cs:generic-api-key:11
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:docs/03-mcp-contracts.md:generic-api-key:2698
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:tests/AdrMcp.UnitTests/Application/UploadAndSafetyTests.cs:private-key:60
+e2c954782fe57333c05bf8dde3cd4e753aa0117e:tests/AdrMcp.UnitTests/Application/UploadAndSafetyTests.cs:stripe-access-token:61

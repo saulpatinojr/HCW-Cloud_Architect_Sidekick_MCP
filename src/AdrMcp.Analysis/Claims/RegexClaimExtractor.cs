@@ -54,7 +54,23 @@ public sealed partial class RegexClaimExtractor : IClaimExtractor
     private static string Clean(string s) => s.Trim().Trim('`', '"', '\'', '*', '.', ',', ';', ':', ')', '(').Trim();
 
     private static string NormalizeCloud(string c) => c.ToLowerInvariant() switch { "azure" or "microsoft azure" => "azure", "aws" or "amazon web services" => "aws", "gcp" or "google cloud" or "google cloud platform" => "gcp", var o => o };
-    private static string NormalizeAuth(string a) { var l = a.ToLowerInvariant(); return l.Contains("entra") || l.Contains("azure ad") || l.Contains("aad") ? "entra-id" : l.Contains("oauth") || l.Contains("oidc") || l.Contains("openid") ? "oauth2-oidc" : l.Contains("saml") ? "saml" : l.Contains("api key") || l.Contains("api-key") ? "api-key" : l.Contains("basic") ? "basic" : l.Contains("certificate") || l.Contains("mtls") ? "mtls" : l.Contains("managed identit") ? "managed-identity" : l; }
+    // First match wins, so the order matters.
+    private static readonly (string[] Keywords, string Normalized)[] AuthKinds =
+    [
+        (["entra", "azure ad", "aad"], "entra-id"),
+        (["oauth", "oidc", "openid"], "oauth2-oidc"),
+        (["saml"], "saml"),
+        (["api key", "api-key"], "api-key"),
+        (["basic"], "basic"),
+        (["certificate", "mtls"], "mtls"),
+        (["managed identit"], "managed-identity"),
+    ];
+
+    private static string NormalizeAuth(string a)
+    {
+        var l = a.ToLowerInvariant();
+        return AuthKinds.FirstOrDefault(kind => kind.Keywords.Any(l.Contains)).Normalized ?? l;
+    }
 
     [GeneratedRegex(@"\b(?:must not|shall not|may not|will not|should not|do not|don't|never|is prohibited to|are prohibited from|prohibit(?:s|ed)?|ban(?:s|ned)?|forbid(?:s|den)?|avoid|is not (?:allowed|permitted)|are not (?:allowed|permitted)|no longer)\s+(?:use|using|adopt|depend on|rely on|introduce|be used|of|the use of|to use|allowed:?|permitted:?)?\s*(?:the\s+)?(?<tech>[A-Z@][A-Za-z0-9@./_+#-]{1,60}(?:\s+[A-Z][A-Za-z0-9.+#-]{1,30}){0,3})", RegexOptions.CultureInvariant)] private static partial Regex Prohibited();
     [GeneratedRegex(@"\b(?:must use|shall use|will use|we use|use only|standardi[sz]e on|adopt|is mandatory|are mandatory|is required|are required|must be used|must adopt|exclusively use|is the standard|will adopt|we will adopt|we adopt)\s+(?:for\s+\w+\s+)?(?:the\s+|only\s+)?(?<tech>[A-Z@][A-Za-z0-9@./_+#-]{1,60}(?:\s+[A-Z][A-Za-z0-9.+#-]{1,30}){0,3})", RegexOptions.CultureInvariant)] private static partial Regex Required();

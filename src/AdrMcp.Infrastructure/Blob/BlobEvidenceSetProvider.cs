@@ -28,7 +28,8 @@ public sealed class BlobEvidenceSetProvider : IEvidenceSetProvider
                 var text = await _blobs.ReadTextAsync(EvidenceContainer.Sanitized, r.SanitizedBlobPath!, maxBytesPerFile, ct);
                 files.Add(new EvidenceFile(r.Id, r.OriginalFileName.Replace('\\', '/'), r.VerifiedMediaType ?? r.DeclaredMediaType, text, r.ActualSha256 ?? "", r.AdrId));
             }
-            catch (Exception ex) { _logger.LogWarning(ex, "Could not load sanitized evidence {EvidenceId}", r.Id); }
+            // One unreadable file is skipped; a cancelled caller is not, or a partial set would look complete.
+            catch (Exception ex) when (!ct.IsCancellationRequested) { _logger.LogWarning(ex, "Could not load sanitized evidence {EvidenceId}", r.Id); }
         }
         return new EvidenceSet(files);
     }

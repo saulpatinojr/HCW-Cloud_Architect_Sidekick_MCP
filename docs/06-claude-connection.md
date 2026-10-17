@@ -29,7 +29,7 @@ Project-scoped config shared with the team (`.mcp.json`, committed; the key is r
 }
 ```
 
-Entra-protected server (built-in MCP auth, preview): Entra ID does not support Dynamic Client Registration, so register a **public client** app in your tenant (redirect URI for Claude Code's local callback, e.g. `http://localhost:<port>/callback` **[VERIFY the exact redirect URI in the Claude Code OAuth docs]**), pre-authorize it on the server app's `user_impersonation` scope, then:
+Entra-protected server (built-in MCP auth, preview): Entra ID does not support Dynamic Client Registration, so register a **public client** app in your tenant (redirect URI for Claude Code's local callback, e.g. `http://localhost:<port>/callback` **[VERIFY the exact redirect URI in the Claude Code OAuth docs]**), pre-authorize it on the server app's `user_impersonation` scope, and add its client ID to `ADR_ENTRA_ALLOWED_CLIENT_IDS` before `azd provision` (App Service Authentication refuses tokens obtained by any other client), then:
 
 ```bash
 claude mcp add --transport http adr https://<app>.azurewebsites.net/runtime/webhooks/mcp \
@@ -48,7 +48,7 @@ Authentication options offered by the connector UI (per the Anthropic article):
 | Option | Use with this server |
 |---|---|
 | **Fixed credentials / request headers** | Key-based deployment: add header `x-functions-key` with the `mcp_extension` system key. Claude sends it on every request. |
-| **OAuth** — "Use Claude's published identity", "Automatic registration", or **"Custom OAuth client"** | Entra deployment: Entra has no DCR, so use **Custom OAuth client** with the client id/secret of a confidential app you register and pre-authorize on the server app; Claude's redirect URI must be added to that registration **[VERIFY in the connector UI at setup time]**. |
+| **OAuth** — "Use Claude's published identity", "Automatic registration", or **"Custom OAuth client"** | Entra deployment: Entra has no DCR, so use **Custom OAuth client** with the client id/secret of a confidential app you register, pre-authorize on the server app and add to `ADR_ENTRA_ALLOWED_CLIENT_IDS`; Claude's redirect URI must be added to that registration **[VERIFY in the connector UI at setup time]**. |
 | No sign-in | Not supported by this server (edge auth is mandatory). |
 
 Important network fact from the article: Claude connects **from Anthropic's cloud**, not from the user's device. The Function App must be reachable from the internet (or allow-list Anthropic's published egress IP ranges on the app's access restrictions). Private-endpoint-only deployments (`enablePrivateNetworking=true`) therefore need a public ingress such as Azure Front Door/APIM in front of the private app, or must stay key-based with IP restrictions.

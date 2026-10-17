@@ -23,12 +23,21 @@ All notable changes to this project are documented here. The format follows Keep
 ### Fixed
 - CI was red since the initial commit: Azure.Storage.Blobs 12.30.1 sends API version 2026-10-06, which Azurite rejects. CI now runs Azurite 3.37.0 with `--skipApiVersionCheck` and sets `ADR_TEST_REQUIRE_AZURITE=true`, so Azurite tests fail instead of skipping. Local instructions add the same flag.
 - Repository links (badges, clone instructions, issue-template contact links) now point to `saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP`.
+- First deployment: `scripts/postprovision.sh` no longer treats a 403 (Key Vault role still propagating) as "secret missing". It retries with backoff and creates `principal-hash-salt` only after Key Vault answers SecretNotFound, so an existing salt is never overwritten. The deploy job retries `azd deploy`, waits for `/api/health`, and polls for the `mcp_extension` key before the smoke test.
+- The deploy job's plan step is now `azd provision --preview`, so the what-if resolves `infra/main.parameters.json` exactly as `azd provision` does (it previously omitted the deployer role assignments and Defender settings).
+- In Entra mode `/api/health` returns 503 when the worker does not see App Service Authentication, so a deployment that would reject every call fails the deploy job instead of going green.
+- Worker telemetry: the isolated worker's Application Insights SDK now authenticates with the app's managed identity (read from `APPLICATIONINSIGHTS_AUTHENTICATION_STRING`); with local authentication disabled on Application Insights it was previously rejected, and only host telemetry arrived.
 
 ### Security
+- `authMode=EntraBuiltIn` now deploys App Service Authentication (`authsettingsV2`: Entra provider, require authentication, 401, only the client apps in the new `entraAllowedClientIds` parameter), `WEBSITE_AUTH_AAD_ALLOWED_TENANTS` and `WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES` from the new `entraClientId` parameter. The deployment fails without both, and the deploy job asserts an unauthenticated MCP call gets 401. Previously the MCP webhook became `Anonymous` with no authentication in front of it until someone configured it by hand.
+- In Entra mode the server rejects every request unless App Service Authentication is enabled (`WEBSITE_AUTH_ENABLED`), so a disabled or drifted configuration cannot turn a forged `X-MS-CLIENT-PRINCIPAL` header into access.
+- An Entra principal without a mapped app role now gets no access (`Auth:DefaultRoleWhenNoAppRoles` defaults to `None`, was `Reader`), so every caller needs an assigned app role. Set it to `Reader` to restore the old behaviour.
+- `scripts/postprovision.sh` passes the generated salt to `az` through a private temporary file instead of the command line, and fails fast with a network-specific message when the vault firewall or private endpoint blocks the deployer. The example local salt is now too short for durable persistence, so it can never be reused in Azure.
+- With durable persistence the app refuses to start when `Adr:PrincipalHashSalt` is the default placeholder, shorter than 32 characters, or an unresolved Key Vault reference, instead of silently hashing principals with a guessable salt.
 - Replaced the broken `dotnet list package --vulnerable` step (it printed `MSB0001`, exited 0 and could never fail) with NuGet Audit in `Directory.Build.props` (`NuGetAuditMode=all`, `NuGetAuditLevel=low`). In CI, NU1901–NU1904 are errors, so restore fails on any known vulnerable direct or transitive package.
 - Least-privilege workflow token permissions: `{}` at workflow level; `build-test` gets `contents: read` and `pull-requests: read`, `deploy` gets `contents: read` and `id-token: write`.
 - Non-GitHub actions (gitleaks-action, Azure/setup-azd, azure/login) are pinned to commit SHAs; the deploy job can mint Azure tokens. Gitleaks now runs before any pull-request code. NuGet Audit fails closed when vulnerability data is unavailable (NU1900/NU1905), and a new CI step scans the Functions host-extension packages (generated `WorkerExtensions` project), which NuGet Audit settings never reach.
-- The smoke test reads the function key from `ADR_MCP_KEY` so it stays off the command line; Azurite in CI binds to `127.0.0.1` and readiness waits for an HTTP answer.
+- The smoke test reads the function key from `ADR_MCP_KEY` and the Entra token from `ADR_MCP_BEARER`, so neither appears on the command line; Azurite in CI binds to `127.0.0.1` and readiness waits for an HTTP answer.
 
 ## [1.0.0] - 2026-10-07
 

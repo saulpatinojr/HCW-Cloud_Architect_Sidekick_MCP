@@ -4,10 +4,23 @@ using AdrMcp.Application.Abstractions;
 using AdrMcp.Application.Options;
 using AdrMcp.Domain.Errors;
 using AdrMcp.Domain.Tenancy;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AdrMcp.Infrastructure.Tenancy;
+
+/// <summary>
+/// Whether App Service Authentication runs in front of this app. The platform injects the read-only WEBSITE_AUTH_ENABLED
+/// variable when it does; nothing a caller sends (headers, tool arguments) can influence it.
+/// </summary>
+public sealed record PlatformAuthentication(bool Enabled)
+{
+    public const string EnabledSetting = "WEBSITE_AUTH_ENABLED";
+
+    public static PlatformAuthentication FromConfiguration(IConfiguration configuration)
+        => new(string.Equals(configuration[EnabledSetting], "true", StringComparison.OrdinalIgnoreCase));
+}
 
 /// <summary>
 /// Resolves the caller from transport headers. Two modes:
@@ -20,13 +33,21 @@ namespace AdrMcp.Infrastructure.Tenancy;
 public sealed class HeaderTenantResolver : ITenantResolver
 {
     private readonly AuthOptions _o;
+    private readonly PlatformAuthentication _platform;
     private readonly ILogger<HeaderTenantResolver> _logger;
 
-    public HeaderTenantResolver(IOptions<AuthOptions> o, ILogger<HeaderTenantResolver> logger) { _o = o.Value; _logger = logger; }
+    public HeaderTenantResolver(IOptions<AuthOptions> o, PlatformAuthentication platform, ILogger<HeaderTenantResolver> logger)
+    {
+        _o = o.Value; _platform = platform; _logger = logger;
+        if (IsEntra && !_platform.Enabled)
+            _logger.LogError("Auth:Mode is EntraBuiltIn but App Service Authentication is not enabled ({Setting} is not true); every request will be rejected.", PlatformAuthentication.EnabledSetting);
+    }
+
+    private bool IsEntra => string.Equals(_o.Mode, "EntraBuiltIn", StringComparison.OrdinalIgnoreCase);
 
     public Task<TenantContext> ResolveAsync(IReadOnlyDictionary<string, string> headers, string? sessionId, string correlationId, CancellationToken ct)
     {
-        if (string.Equals(_o.Mode, "EntraBuiltIn", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(ResolveEntra(headers, sessionId, correlationId));
+        if (IsEntra) return Task.FromResult(ResolveEntra(headers, sessionId, correlationId));
         if (string.Equals(_o.Mode, "FunctionKey", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(ResolveStatic(sessionId, correlationId));
         throw new DomainException(ErrorCodes.Unauthorized, $"Unsupported Auth:Mode '{_o.Mode}'.");
     }
@@ -41,6 +62,9 @@ public sealed class HeaderTenantResolver : ITenantResolver
 
     private TenantContext ResolveEntra(IReadOnlyDictionary<string, string> headers, string? sessionId, string correlationId)
     {
+        // The header is trustworthy only while App Service Authentication sits in front of the app and strips inbound copies.
+        // If it has been turned off (portal change, drifted deployment), the header is caller-controlled: fail closed.
+        if (!_platform.Enabled) throw new DomainException(ErrorCodes.Unauthorized, "Entra mode requires App Service Authentication, which is not enabled on this app.");
         var encoded = Get(headers, "X-MS-CLIENT-PRINCIPAL");
         if (string.IsNullOrEmpty(encoded)) throw new DomainException(ErrorCodes.Unauthorized, "No authenticated principal. Is built-in authentication enabled and required?");
         ClientPrincipal principal;
@@ -65,7 +89,8 @@ public sealed class HeaderTenantResolver : ITenantResolver
         var roleClaims = principal.Claims?.Where(c => c.Typ is "roles" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role").Select(c => c.Val) ?? Array.Empty<string>();
         var roles = new HashSet<Role>();
         foreach (var rc in roleClaims) if (_o.AppRoleMap.TryGetValue(rc, out var mappedRole) && Enum.TryParse<Role>(mappedRole, true, out var role)) roles.Add(role);
-        if (roles.Count == 0 && Enum.TryParse<Role>(_o.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
+        var grantsDefault = !string.Equals(_o.DefaultRoleWhenNoAppRoles, "None", StringComparison.OrdinalIgnoreCase);
+        if (roles.Count == 0 && grantsDefault && Enum.TryParse<Role>(_o.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
         var workspaces = _o.TenantWorkspaces.TryGetValue(tenantId, out var ws) ? ws.ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { _o.DefaultWorkspaceId };
         var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
         return new TenantContext(tenantId, appId is not null && oid == appId ? $"app:{appId}" : $"user:{oid}", display, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
@@ -88,6 +113,8 @@ public sealed class RoleAuthorizationService : IAuthorizationService
 {
     public void Require(TenantContext ctx, Permission permission)
     {
+        if (ctx.Roles.Count == 0)
+            throw new ForbiddenException("No ADR role is assigned to this principal. Assign an app role (Adr.Reader, Adr.Author, Adr.Approver or Adr.Admin) on the server's app registration.");
         if (!RolePermissions.Has(ctx.Roles, permission))
             throw new ForbiddenException($"Permission '{permission}' requires a role you do not have ({string.Join(", ", ctx.Roles)}).");
     }

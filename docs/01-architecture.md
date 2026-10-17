@@ -163,5 +163,5 @@ sequenceDiagram
 | Job handler throws | Message re-queued up to `maxDequeueCount` (3); job record updated each attempt; after the last attempt job = `Poisoned`, message → `analysis-jobs-poison`. |
 | Job cancelled mid-run | Cancellation flag is checked at each progress report; job = `Cancelled`. |
 | Analyzer plugin throws | Detector error is captured as an `Uncertain` result with a redacted message; other detectors continue. |
-| Key Vault reference unresolved | App setting is empty → `Adr:PrincipalHashSalt` falls back to a non-secret default and logs a warning at start **[production must fail fast: see roadmap hardening]**. |
+| Key Vault reference unresolved | The platform passes the literal `@Microsoft.KeyVault(...)` string → with durable persistence the host refuses to start (`PrincipalHashSaltValidator`), so no principal is ever hashed with a guessable salt. Fix the reference and restart. |
 | Audit/memory write fails | Logged as error; the tool result is still returned (availability over audit completeness for MVP; hardening phase makes audit mandatory). |

@@ -16,9 +16,18 @@ param location string
 @description('Optional resource group name override.')
 param resourceGroupName string = ''
 
-@description('Authentication mode for the MCP server: FunctionKey (default, mcp_extension system key) or EntraBuiltIn (App Service Authentication, configure after deploy).')
+@description('Authentication mode for the MCP server: FunctionKey (default, mcp_extension system key) or EntraBuiltIn (App Service Authentication with Entra ID, preview; requires entraClientId).')
 @allowed([ 'FunctionKey', 'EntraBuiltIn' ])
 param authMode string = 'FunctionKey'
+
+@description('Client ID of the Entra app registration that represents this MCP server. Required when authMode is EntraBuiltIn.')
+param entraClientId string = ''
+
+@description('Entra tenant that issues tokens for entraClientId. Empty means the deployment tenant.')
+param entraTenantId string = ''
+
+@description('Comma-separated client IDs of the applications allowed to call the server (for example your Claude Code public client and Claude connector app). Required when authMode is EntraBuiltIn.')
+param entraAllowedClientIds string = ''
 
 @description('Enable VNet integration with private endpoints for Storage, Cosmos DB and Key Vault (production option).')
 param enablePrivateNetworking bool = false
@@ -143,6 +152,9 @@ module functionApp './modules/functionapp.bicep' = {
     instanceMemoryMB: instanceMemoryMB
     maximumInstanceCount: maximumInstanceCount
     dotnetVersion: functionsDotnetVersion
+    entraClientId: entraClientId
+    entraTenantId: entraTenantId
+    entraAllowedClientIds: entraAllowedClientIds
     vnetIntegrationSubnetId: enablePrivateNetworking ? network.?outputs.appSubnetId ?? '' : ''
   }
 }

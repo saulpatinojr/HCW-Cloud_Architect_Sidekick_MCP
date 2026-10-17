@@ -20,7 +20,7 @@
     "Auth__StaticRoles__0": "Author",
     "Auth__StaticRoles__1": "Approver",
 
-    "Adr__PrincipalHashSalt": "local-dev-salt-not-for-production",
+    "Adr__PrincipalHashSalt": "local-dev-only",
     "Uploads__MaxFileBytes": "52428800",
     "Uploads__UploadUrlTtlMinutes": "15",
     "Uploads__BlockOnCriticalSafetyFinding": "true",

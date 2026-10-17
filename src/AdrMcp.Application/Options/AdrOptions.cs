@@ -89,5 +89,7 @@ public sealed class AuthOptions
     /// <summary>ADR tenant id -> workspaces the tenant may use. "*" allows any. Workspace membership by group is a later-phase feature.</summary>
     public Dictionary<string, string[]> TenantWorkspaces { get; set; } = new();
     public string DefaultWorkspaceId { get; set; } = "default";
-    public string DefaultRoleWhenNoAppRoles { get; set; } = "Reader";
+    /// <summary>Role granted to an Entra principal that carries no mapped app role. "None" (default) grants nothing, so every caller
+    /// needs an assigned app role (least privilege); set "Reader" to let any authenticated caller in the tenant read.</summary>
+    public string DefaultRoleWhenNoAppRoles { get; set; } = "None";
 }

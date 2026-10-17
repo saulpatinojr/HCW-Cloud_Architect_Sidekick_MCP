@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (azd hooks, CI): keep LF even when committed from Windows.
+*.sh text eol=lf

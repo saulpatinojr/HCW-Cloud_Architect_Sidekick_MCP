@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using AdrMcp.Application.Abstractions;
 using AdrMcp.Domain.Adrs;
@@ -56,12 +57,41 @@ public abstract class SafetyRuleBase : ISafetyReviewRule
         };
 }
 
-public sealed class EolTechnologyRule : SafetyRuleBase
+public sealed partial class EolTechnologyRule : SafetyRuleBase
 {
+    /// <summary>Days before a .NET release's end of support during which a Medium "approaching end of support" finding is emitted.</summary>
+    public const int DotNetEolWarningWindowDays = 90;
+
+    private sealed record DotNetRelease(int Major, int? Minor, string Name, bool Lts, DateOnly EndOfSupport);
+
+    // Official end-of-support dates (the last supported day), verified 2026-10-17 against the .NET support policy
+    // (https://dotnet.microsoft.com/platform/support/policy/dotnet-core, last updated 2026-10-13) and the Microsoft Lifecycle page
+    // (https://learn.microsoft.com/lifecycle/products/microsoft-net-and-net-core). .NET 9 is STS, now supported for 24 months, so it
+    // ends on the same day as .NET 8. Minor is null for .NET 5+, which only ships x.0. .NET Core 1.x/2.0 are omitted: the previous
+    // pattern never matched them and ".NET 1.1"/".NET 2.0" usually mean .NET Framework. Add the next release once Microsoft publishes it.
+    private static readonly DotNetRelease[] DotNetReleases =
+    {
+        new(2, 1, ".NET Core 2.1", true, new DateOnly(2021, 8, 21)),
+        new(2, 2, ".NET Core 2.2", false, new DateOnly(2019, 12, 23)),
+        new(3, 0, ".NET Core 3.0", false, new DateOnly(2020, 3, 3)),
+        new(3, 1, ".NET Core 3.1", true, new DateOnly(2022, 12, 13)),
+        new(5, null, ".NET 5", false, new DateOnly(2022, 5, 10)),
+        new(6, null, ".NET 6", true, new DateOnly(2024, 11, 12)),
+        new(7, null, ".NET 7", false, new DateOnly(2024, 5, 14)),
+        new(8, null, ".NET 8", true, new DateOnly(2026, 11, 10)),
+        new(9, null, ".NET 9", false, new DateOnly(2026, 11, 10)),
+        new(10, null, ".NET 10", true, new DateOnly(2028, 11, 14)),
+    };
+
+    // ".NET 8", ".NET 8.0", ".NET Core 3.1", "ASP.NET Core 3.1", "dotnet 6", "dotnet core 3.1", and TFMs "net8.0", "net8.0-windows", "netcoreapp3.1".
+    // TFMs need the dot so .NET Framework monikers (net48, net472) and plain "net" (net 5 million) do not match.
+    [GeneratedRegex(@"(?:\.NET\s*(?:Core\s*)?|\bdotnet\s*(?:core\s*)?|\bnet(?:coreapp)?(?=\d{1,2}\.\d))(?<major>\d{1,2})(?:\.(?<minor>\d+))?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DotNetVersion();
+
     // Dates verified against vendor lifecycle pages as of 2026-10-07. [VERIFY] before relying on exact dates in policy.
+    // .NET is evaluated separately against DotNetReleases so its end of support is compared with the review date.
     private static readonly (string Pattern, string Name, string Note)[] Eol =
     {
-        (@"\.NET\s*(?:Core\s*)?(?:2\.[12]|3\.[01]|5(?:\.0)?|6(?:\.0)?|7(?:\.0)?)\b", ".NET 7 and earlier (.NET 6 EOL 2024-11-12, .NET 7 EOL 2024-05-14)", "Upgrade to a supported LTS (.NET 8 until 2026-11-10, .NET 10 LTS)."),
         (@"\bNode(?:\.js)?\s*(?:v?1[0-8])\b", "Node.js 18 and earlier (18 EOL 2025-04-30)", "Use Node.js 20 LTS or later."),
         (@"\bPython\s*(?:2(?:\.\d+)?|3\.[0-8])\b", "Python 3.8 and earlier (3.8 EOL 2024-10-07)", "Use Python 3.10+."),
         (@"\bAngular\.?JS\b|\bAngular\s*1\b", "AngularJS (EOL 2022-01)", "Migrate to a supported framework."),
@@ -78,6 +108,7 @@ public sealed class EolTechnologyRule : SafetyRuleBase
     public override IEnumerable<SafetyFinding> Evaluate(SafetyReviewInput input, Func<string, SafetyFinding> create)
     {
         var text = RuleText.All(input.Adr);
+        foreach (var finding in EvaluateDotNet(text, DateOnly.FromDateTime(input.Now.UtcDateTime), create)) yield return finding;
         foreach (var (pattern, name, note) in Eol)
         {
             var m = RuleText.First(text, pattern);
@@ -86,6 +117,57 @@ public sealed class EolTechnologyRule : SafetyRuleBase
                 new[] { "Security", "Supportability", "Maintainability" }, new[] { "Pin a supported version and document the upgrade path.", "Add a fitness function that fails on EOL runtimes." });
         }
     }
+
+    /// <summary>
+    /// A .NET release is end of life from the UTC day after its last supported day (High). From <see cref="DotNetEolWarningWindowDays"/>
+    /// days before that last day, up to and including it, it is approaching end of support (Medium). Unknown versions are ignored.
+    /// </summary>
+    private static IEnumerable<SafetyFinding> EvaluateDotNet(string text, DateOnly today, Func<string, SafetyFinding> create)
+    {
+        var mentions = DotNetVersion().Matches(text)
+            .Select(m => (Release: Resolve(m), Excerpt: m.Value.Trim()))
+            .Where(x => x.Release is not null)
+            .Select(x => (Release: x.Release!, x.Excerpt))
+            .ToList();
+        if (mentions.Count == 0) yield break;
+
+        var target = DotNetReleases.Where(r => r.Lts && r.EndOfSupport.AddDays(-DotNetEolWarningWindowDays) > today).MaxBy(r => r.Major);
+        string[] attributes = { "Security", "Supportability", "Maintainability" };
+
+        var eol = mentions.Where(x => today > x.Release.EndOfSupport).ToList();
+        if (eol.Count > 0)
+            yield return Build(create, $"Decision references end-of-life or deprecated technology: {Describe(eol)}", FindingSeverity.High, 0.6, Observed(eol),
+                "The decision depends on a technology that no longer receives security updates.",
+                target is null ? "Upgrade to a supported .NET LTS release (see the official .NET support policy)." : $"Upgrade to a supported LTS ({target.Name} until {Format(target.EndOfSupport)}).",
+                attributes, new[] { "Pin a supported version and document the upgrade path.", "Add a fitness function that fails on EOL runtimes." });
+
+        var nearing = mentions.Where(x => today <= x.Release.EndOfSupport && today >= x.Release.EndOfSupport.AddDays(-DotNetEolWarningWindowDays)).ToList();
+        if (nearing.Count > 0)
+        {
+            var deadline = Format(nearing.Min(x => x.Release.EndOfSupport));
+            var remaining = string.Join("; ", Releases(nearing).Select(r => $"{r.Name} is supported through {Format(r.EndOfSupport)} ({DaysLeft(r.EndOfSupport.DayNumber - today.DayNumber)})"));
+            yield return Build(create, $"Decision references technology approaching end of support: {Describe(nearing)}", FindingSeverity.Medium, 0.6, Observed(nearing),
+                $"{remaining}. After that the decision depends on a technology that no longer receives security updates.",
+                target is null ? $"Plan the upgrade to a supported .NET LTS release before {deadline}." : $"Plan the upgrade to {target.Name} (LTS until {Format(target.EndOfSupport)}) before {deadline}.",
+                attributes, new[] { "Schedule the runtime upgrade before the end-of-support date.", "Add a fitness function that fails on EOL runtimes." });
+        }
+    }
+
+    private static DotNetRelease? Resolve(Match m)
+    {
+        var major = int.Parse(m.Groups["major"].Value, CultureInfo.InvariantCulture);
+        int? minor = m.Groups["minor"].Success && int.TryParse(m.Groups["minor"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : null;
+        return DotNetReleases.FirstOrDefault(r => r.Major == major && (r.Minor is null || r.Minor == minor));
+    }
+
+    private static IEnumerable<DotNetRelease> Releases(List<(DotNetRelease Release, string Excerpt)> mentions)
+        => mentions.Select(x => x.Release).Distinct().OrderBy(r => r.Major).ThenBy(r => r.Minor ?? 0);
+    private static string Describe(List<(DotNetRelease Release, string Excerpt)> mentions)
+        => string.Join(", ", Releases(mentions).Select(r => $"{r.Name} (end of support {Format(r.EndOfSupport)})"));
+    private static string Observed(List<(DotNetRelease Release, string Excerpt)> mentions)
+        => $"Text mentions '{string.Join("', '", mentions.Select(x => x.Excerpt).Distinct(StringComparer.OrdinalIgnoreCase).Take(3))}'.";
+    private static string Format(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private static string DaysLeft(int days) => days switch { 0 => "today is the last day", 1 => "1 day left", _ => $"{days} days left" };
 }
 
 public sealed class MissingRollbackPlanRule : SafetyRuleBase

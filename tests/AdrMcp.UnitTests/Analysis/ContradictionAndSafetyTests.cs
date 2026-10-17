@@ -1,7 +1,10 @@
 using System.Text.Json;
 using AdrMcp.Analysis.Claims;
+using AdrMcp.Analysis.SafetyReview;
+using AdrMcp.Application.Abstractions;
 using AdrMcp.Domain.Adrs;
 using AdrMcp.Domain.Common;
+using AdrMcp.Domain.Findings;
 using AdrMcp.UnitTests.Support;
 
 namespace AdrMcp.UnitTests.Analysis;
@@ -186,5 +189,137 @@ public class SafetyReviewTests
         var host = new TestHost();
         var r = await host.CallAsync("adr_safety_review", new { inline = new { title = "Adopt zone-redundant storage", decision = "Use ZRS for all production storage accounts with soft delete enabled.", rationale = "Zone failures have caused two incidents; ZRS removes the single-zone dependency at modest cost (estimate: +$120/month).", alternatives = new[] { "LRS with manual failover", "GRS" }, consequences = "Slightly higher cost. Rollback: switch SKU back. Monitoring via Azure Monitor alerts on availability." } });
         Assert.True(r.GetProperty("data").GetProperty("findings").GetArrayLength() <= 1);
+    }
+}
+
+/// <summary>SR-EOL-001 compares .NET end-of-support dates with the review date (SafetyReviewInput.Now, from IClock), pinned here.</summary>
+public class EolTechnologyRuleTests
+{
+    private static IReadOnlyList<SafetyFinding> Evaluate(string decision, DateTimeOffset now)
+    {
+        var adr = new Adr { Id = "x", TenantId = "t", WorkspaceId = "w", AdrNumber = 1, Human = new HumanOwnedContent { Title = "Runtime", Decision = decision }, CreatedAt = now, Provenance = Provenance.Human("a", now, "c") };
+        SafetyFinding Create(string summary) => new()
+        {
+            Id = "saf_test", TenantId = "t", WorkspaceId = "w", AdrId = adr.Id, Kind = FindingKind.Safety, Severity = FindingSeverity.Medium,
+            Confidence = Confidence.Inferred(0.5), Summary = summary, Provenance = Provenance.System("SR-EOL-001", "test", now, "c"), FingerprintKey = summary, Category = "UnsupportedTechnology"
+        };
+        return new EolTechnologyRule().Evaluate(new SafetyReviewInput(adr, Array.Empty<Adr>(), null, now), Create).ToList();
+    }
+
+    private static DateTimeOffset At(string iso) => DateTimeOffset.Parse(iso, System.Globalization.CultureInfo.InvariantCulture);
+
+    [Theory]
+    [InlineData("We will run on .NET 7.", "2024-05-15T00:00:00Z")]
+    [InlineData("<TargetFramework>net7.0</TargetFramework>", "2024-05-15T00:00:00Z")]
+    [InlineData("Target .NET 7.0 for the API.", "2026-10-17T12:00:00Z")]
+    [InlineData("Keep net7.0 for now.", "2030-01-01T00:00:00Z")]
+    public void Net7_is_end_of_life_after_2024_05_14(string decision, string now)
+    {
+        var f = Assert.Single(Evaluate(decision, At(now)));
+        Assert.Equal(FindingSeverity.High, f.Severity);
+        Assert.Equal("Decision references end-of-life or deprecated technology: .NET 7 (end of support 2024-05-14)", f.Summary);
+        Assert.Equal("UnsupportedTechnology", f.Category);
+        Assert.Equal(EvidenceBasis.Inferred, f.Confidence.Basis);
+        Assert.True(f.Confidence.Score <= Confidence.InferredCeiling);
+        Assert.StartsWith("Text mentions '", f.ObservedEvidence);
+        Assert.True(f.RequiresHumanReview);
+    }
+
+    [Theory] // Forms the previous static pattern matched, plus dotnet/TFM spellings; all EOL long before 2026-10-17.
+    [InlineData(".NET 6", ".NET 6", ".NET 6")]
+    [InlineData(".NET6", ".NET 6", ".NET6")]
+    [InlineData(".NET 6.0.36", ".NET 6", ".NET 6.0")]
+    [InlineData("dotnet 6", ".NET 6", "dotnet 6")]
+    [InlineData("net6.0-windows", ".NET 6", "net6.0")]
+    [InlineData(".NET 5.0", ".NET 5", ".NET 5.0")]
+    [InlineData(".NET Core 3.1", ".NET Core 3.1", ".NET Core 3.1")]
+    [InlineData("ASP.NET Core 3.1", ".NET Core 3.1", ".NET Core 3.1")]
+    [InlineData("netcoreapp3.1", ".NET Core 3.1", "netcoreapp3.1")]
+    [InlineData("dotnet core 3.0", ".NET Core 3.0", "dotnet core 3.0")]
+    [InlineData(".net core 2.2", ".NET Core 2.2", ".net core 2.2")]
+    [InlineData(".NET 2.1", ".NET Core 2.1", ".NET 2.1")]
+    public void Previously_matched_and_new_spellings_are_flagged(string mention, string release, string excerpt)
+    {
+        var f = Assert.Single(Evaluate($"The service uses {mention} in production.", At("2026-10-17T12:00:00Z")));
+        Assert.Equal(FindingSeverity.High, f.Severity);
+        Assert.Contains($": {release} (end of support ", f.Summary);
+        Assert.Equal($"Text mentions '{excerpt}'.", f.ObservedEvidence);
+    }
+
+    [Theory] // Warning window: 90 days before the last supported day (2026-08-12) through 2026-11-10 inclusive; EOL from 2026-11-11 UTC.
+    [InlineData("2026-08-11T23:59:59Z", null)]
+    [InlineData("2026-08-12T00:00:00Z", FindingSeverity.Medium)]
+    [InlineData("2026-10-17T12:00:00Z", FindingSeverity.Medium)]
+    [InlineData("2026-11-10T23:59:59Z", FindingSeverity.Medium)]
+    [InlineData("2026-11-11T00:00:00Z", FindingSeverity.High)]
+    [InlineData("2026-11-10T20:00:00-05:00", FindingSeverity.High)] // 2026-11-11T01:00Z: the UTC date decides
+    public void Net8_warns_inside_the_window_and_is_end_of_life_from_2026_11_11(string now, FindingSeverity? expected)
+    {
+        foreach (var mention in new[] { ".NET 8", ".NET 8.0", "net8.0", "dotnet 8" })
+        {
+            var findings = Evaluate($"All functions run on {mention} isolated.", At(now));
+            if (expected is null) { Assert.Empty(findings); continue; }
+            var f = Assert.Single(findings);
+            Assert.Equal(expected, f.Severity);
+            Assert.Equal(EvidenceBasis.Inferred, f.Confidence.Basis);
+            Assert.Equal($"Text mentions '{mention}'.", f.ObservedEvidence);
+            Assert.Equal(expected == FindingSeverity.High
+                ? "Decision references end-of-life or deprecated technology: .NET 8 (end of support 2026-11-10)"
+                : "Decision references technology approaching end of support: .NET 8 (end of support 2026-11-10)", f.Summary);
+            Assert.Contains(".NET 10", f.Recommendation);
+        }
+    }
+
+    [Fact]
+    public void Net8_on_2026_10_17_is_a_warning_with_days_left_not_end_of_life()
+    {
+        var f = Assert.Single(Evaluate("We standardise on .NET 8 (LTS).", At("2026-10-17T09:00:00Z")));
+        Assert.Equal(FindingSeverity.Medium, f.Severity);
+        Assert.DoesNotContain("end-of-life", f.Summary);
+        Assert.Contains(".NET 8 is supported through 2026-11-10 (24 days left)", f.Inference);
+        Assert.Equal("Plan the upgrade to .NET 10 (LTS until 2028-11-14) before 2026-11-10.", f.Recommendation);
+        Assert.Contains("today is the last day", Assert.Single(Evaluate("We use .NET 8.", At("2026-11-10T08:00:00Z"))).Inference);
+    }
+
+    [Fact]
+    public void Net9_shares_the_net8_end_of_support_date()
+    {
+        var warn = Assert.Single(Evaluate("Run .NET 8 for the API and .NET 9 for the worker.", At("2026-10-17T12:00:00Z")));
+        Assert.Equal(FindingSeverity.Medium, warn.Severity);
+        Assert.EndsWith(".NET 8 (end of support 2026-11-10), .NET 9 (end of support 2026-11-10)", warn.Summary);
+        var eol = Assert.Single(Evaluate("<TargetFramework>net9.0</TargetFramework>", At("2026-11-11T00:00:00Z")));
+        Assert.Equal(FindingSeverity.High, eol.Severity);
+    }
+
+    [Theory]
+    [InlineData(".NET 10")]
+    [InlineData(".NET 10.0 LTS")]
+    [InlineData("net10.0")]
+    [InlineData("dotnet 10")]
+    [InlineData(".NET 11")]
+    [InlineData(".NET Framework 4.8")]
+    [InlineData("net48 and net472")]
+    [InlineData("Microsoft.NET.Sdk.Web")]
+    [InlineData("a net 5 million budget")]
+    public void Supported_or_unknown_versions_are_not_flagged(string mention)
+    {
+        Assert.Empty(Evaluate($"The platform targets {mention}.", At("2026-10-17T12:00:00Z")));
+        Assert.Empty(Evaluate($"The platform targets {mention}.", At("2026-11-11T00:00:00Z")));
+    }
+
+    [Fact]
+    public void Eol_and_approaching_releases_are_reported_separately_and_never_recommend_an_eol_release()
+    {
+        const string text = "Migrate the API from .NET 6 to .NET 8, then to .NET 10.";
+        var before = Evaluate(text, At("2026-10-17T12:00:00Z"));
+        Assert.Equal(2, before.Count);
+        Assert.Contains(before, f => f.Severity == FindingSeverity.High && f.Summary.EndsWith(".NET 6 (end of support 2024-11-12)"));
+        Assert.Contains(before, f => f.Severity == FindingSeverity.Medium && f.Summary.EndsWith(".NET 8 (end of support 2026-11-10)"));
+
+        var after = Assert.Single(Evaluate(text, At("2026-11-11T00:00:00Z")));
+        Assert.Equal(FindingSeverity.High, after.Severity);
+        Assert.EndsWith(".NET 6 (end of support 2024-11-12), .NET 8 (end of support 2026-11-10)", after.Summary);
+        Assert.Equal("Text mentions '.NET 6', '.NET 8'.", after.ObservedEvidence);
+        Assert.Equal("Upgrade to a supported LTS (.NET 10 until 2028-11-14).", after.Recommendation);
     }
 }

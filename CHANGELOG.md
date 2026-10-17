@@ -18,6 +18,7 @@ All notable changes to this project are documented here. The format follows Keep
 - Dependabot ignores Microsoft.ApplicationInsights.WorkerService 3.x (it removes types that Microsoft.Azure.Functions.Worker.ApplicationInsights 2.x loads, so the worker would crash at startup) and never updates the `samples/evidence` demo fixture.
 - Removed the unused NSubstitute test dependency.
 - Runtime moves from .NET 8 to .NET 10 (LTS) ahead of .NET 8 end of support on 2026-11-10 (ADR-0007, Proposed): `net10.0`, SDK 10.0.1xx, and the Flex Consumption runtime version is now the `functionsDotnetVersion` Bicep parameter (default `10.0`).
+- Safety rule SR-EOL-001 is date-aware for .NET: it compares official end-of-support dates (.NET Core 2.1 to .NET 10) with the review date, so it flags .NET 8 and 9 as end of life from 2026-11-11. It also raises a Medium warning in the 90 days before end of support, and now matches `dotnet 6`, `net8.0` and `netcoreapp3.1`.
 
 ### Fixed
 - CI was red since the initial commit: Azure.Storage.Blobs 12.30.1 sends API version 2026-10-06, which Azurite rejects. CI now runs Azurite 3.37.0 with `--skipApiVersionCheck` and sets `ADR_TEST_REQUIRE_AZURITE=true`, so Azurite tests fail instead of skipping. Local instructions add the same flag.

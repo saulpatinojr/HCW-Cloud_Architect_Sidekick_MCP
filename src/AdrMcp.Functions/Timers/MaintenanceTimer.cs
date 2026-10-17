@@ -41,7 +41,8 @@ public sealed class MaintenanceTimer
                     await _jobs.EnqueueAsync(system, workspaceId, JobType.TechnologyRefresh, new Dictionary<string, string> { ["adrId"] = adr.Id }, $"scheduled-refresh:{adr.Id}", ct);
                 _logger.LogInformation("Maintenance for {Tenant}/{Workspace}: {Cleaned} expired uploads removed, {Count} refresh jobs queued", tenantId, workspaceId, cleaned, accepted.Count);
             }
-            catch (Exception ex) { _logger.LogError(ex, "Maintenance failed for {Tenant}/{Workspace}", tenantId, workspaceId); }
+            // One failing tenant does not stop the others; host shutdown does.
+            catch (Exception ex) when (!ct.IsCancellationRequested) { _logger.LogError(ex, "Maintenance failed for {Tenant}/{Workspace}", tenantId, workspaceId); }
         }
     }
 }

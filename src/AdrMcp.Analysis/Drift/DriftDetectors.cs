@@ -151,7 +151,7 @@ public sealed class InfrastructureRequirementDriftDetector : IDriftDetector
         foreach (Match m in rx.Matches(text))
         {
             var start = m.Index + m.Length - 1;
-            var end = MatchBrace(text, start);
+            var end = MatchBrace(text, start, '\'');
             yield return new Block(m.Groups["type"].Value, m.Value.Trim(), text[start..Math.Min(text.Length, end + 1)], text[..m.Index].Count(c => c == '\n') + 1);
         }
     }
@@ -162,23 +162,81 @@ public sealed class InfrastructureRequirementDriftDetector : IDriftDetector
         foreach (Match m in rx.Matches(text))
         {
             var start = m.Index + m.Length - 1;
-            var end = MatchBrace(text, start);
+            var end = MatchBrace(text, start, '"');
             yield return new Block(m.Groups["type"].Value, m.Value.Trim(), text[start..Math.Min(text.Length, end + 1)], text[..m.Index].Count(c => c == '\n') + 1);
         }
     }
 
-    private static int MatchBrace(string text, int openIndex)
+    // Index of the brace closing the one at openIndex. Braces inside strings and comments don't count. `quote` is the
+    // language's only string delimiter (Bicep ', HCL "): an apostrophe in a comment must not open a string, or one
+    // resource swallows the next. Bicep ''' strings have no escapes or interpolation.
+    private static int MatchBrace(string text, int openIndex, char quote)
     {
-        int depth = 0; bool inStr = false; char strCh = '\0';
+        int depth = 0;
         for (int i = openIndex; i < text.Length; i++)
         {
-            var c = text[i];
-            if (inStr) { if (c == strCh && text[i - 1] != '\\') inStr = false; continue; }
-            if (c is '\'' or '"') { inStr = true; strCh = c; continue; }
-            if (c == '{') depth++;
-            else if (c == '}') { depth--; if (depth == 0) return i; }
+            var rest = text.AsSpan(i);
+            if (quote == '\'' && rest.StartsWith("'''"))
+            {
+                var close = text.IndexOf("'''", i + 3, StringComparison.Ordinal);
+                if (close < 0) break;
+                i = close + 2;
+            }
+            else if (rest[0] == quote)
+            {
+                i = SkipString(text, i, quote);
+            }
+            else if (rest.StartsWith("/*"))
+            {
+                var close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                if (close < 0) break;
+                i = close + 1;
+            }
+            else if (rest.StartsWith("//") || (quote == '"' && rest[0] == '#'))
+            {
+                var eol = text.IndexOf('\n', i);
+                if (eol < 0) break;
+                i = eol;
+            }
+            else if (rest[0] == '{')
+            {
+                depth++;
+            }
+            else if (rest[0] == '}' && --depth == 0)
+            {
+                return i;
+            }
         }
         return text.Length - 1;
+    }
+
+    // Index of the quote closing the string that opens at `start` (text.Length if unterminated). A backslash escapes the
+    // next character, so '\\' closes. ${...} interpolations may hold strings of their own, e.g. '${replace(x, '-', '')}';
+    // HCL writes a literal ${ as $${.
+    private static int SkipString(string text, int start, char quote)
+    {
+        for (int i = start + 1; i < text.Length; i++)
+        {
+            var rest = text.AsSpan(i);
+            if (rest[0] == '\\' || (quote == '"' && rest.StartsWith("$${")))
+            {
+                i++;
+            }
+            else if (rest[0] == quote)
+            {
+                return i;
+            }
+            else if (rest.StartsWith("${"))
+            {
+                for (int depth = 0; ++i < text.Length;)
+                {
+                    if (text[i] == quote) i = SkipString(text, i, quote);
+                    else if (text[i] == '{') depth++;
+                    else if (text[i] == '}' && --depth == 0) break;
+                }
+            }
+        }
+        return text.Length;
     }
 }
 

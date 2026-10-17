@@ -48,13 +48,12 @@ public sealed class CosmosAdrRepository : IAdrRepository
     public async Task<Page<Adr>> ListAsync(AdrQuery q, CancellationToken ct)
     {
         var sql = "SELECT * FROM c WHERE c.partitionKey = @pk AND c.isDeleted = false";
-        var def = new QueryDefinition(sql);
         if (q.Status is not null) { sql += " AND c.human.status = @status"; }
         if (q.Tag is not null) { sql += " AND ARRAY_CONTAINS(c.human.tags, @tag, false)"; }
         if (q.Owner is not null) { sql += " AND ARRAY_CONTAINS(c.human.owners, @owner, false)"; }
         if (q.RepositoryId is not null) { sql += " AND c.repositoryId = @repo"; }
         sql += " ORDER BY c.adrNumber DESC";
-        def = new QueryDefinition(sql).WithParameter("@pk", Adr.BuildPartitionKey(q.TenantId, q.WorkspaceId));
+        var def = new QueryDefinition(sql).WithParameter("@pk", Adr.BuildPartitionKey(q.TenantId, q.WorkspaceId));
         if (q.Status is not null) def = def.WithParameter("@status", JsonNamingPolicy.CamelCase.ConvertName(q.Status.Value.ToString()));
         if (q.Tag is not null) def = def.WithParameter("@tag", q.Tag);
         if (q.Owner is not null) def = def.WithParameter("@owner", q.Owner);
@@ -66,13 +65,12 @@ public sealed class CosmosAdrRepository : IAdrRepository
     public async Task<IReadOnlyList<Adr>> SearchAsync(string tenantId, string workspaceId, IReadOnlyList<string> terms, AdrStatus? status, int take, CancellationToken ct)
     {
         var clauses = new List<string>();
-        var def = new QueryDefinition("SELECT 1"); // placeholder, rebuilt below
         var sb = new System.Text.StringBuilder("SELECT * FROM c WHERE c.partitionKey = @pk AND c.isDeleted = false");
         if (status is not null) sb.Append(" AND c.human.status = @status");
         for (int i = 0; i < Math.Min(terms.Count, 8); i++)
             clauses.Add($"(CONTAINS(LOWER(c.human.title), @t{i}) OR CONTAINS(LOWER(c.human.decision), @t{i}) OR CONTAINS(LOWER(c.human.context), @t{i}) OR CONTAINS(LOWER(c.human.consequences), @t{i}) OR ARRAY_CONTAINS(c.human.tags, @t{i}, false))");
         if (clauses.Count > 0) sb.Append(" AND (").Append(string.Join(" OR ", clauses)).Append(')');
-        def = new QueryDefinition(sb.ToString()).WithParameter("@pk", Adr.BuildPartitionKey(tenantId, workspaceId));
+        var def = new QueryDefinition(sb.ToString()).WithParameter("@pk", Adr.BuildPartitionKey(tenantId, workspaceId));
         if (status is not null) def = def.WithParameter("@status", JsonNamingPolicy.CamelCase.ConvertName(status.Value.ToString()));
         for (int i = 0; i < Math.Min(terms.Count, 8); i++) def = def.WithParameter($"@t{i}", terms[i].ToLowerInvariant());
         var (items, _) = await CosmosContext.QueryAsync<Adr>(_ctx.Adrs, def, Adr.BuildPartitionKey(tenantId, workspaceId), take, null, ct);
@@ -193,7 +191,8 @@ public sealed class CosmosFindingRepository : IFindingRepository
     public async Task UpsertAsync(Finding f, CancellationToken ct)
     {
         var doc = ToDoc(f);
-        var response = await _ctx.Findings.UpsertItemStreamAsync(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(doc)), new PartitionKey($"{f.TenantId}|{f.WorkspaceId}"), cancellationToken: ct);
+        using var body = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(doc));
+        using var response = await _ctx.Findings.UpsertItemStreamAsync(body, new PartitionKey($"{f.TenantId}|{f.WorkspaceId}"), cancellationToken: ct);
         if (!response.IsSuccessStatusCode) throw new Domain.Errors.DomainException(Domain.Errors.ErrorCodes.Internal, $"Finding upsert failed: {(int)response.StatusCode}", retryable: true);
     }
 

@@ -1,0 +1,8 @@
+# Used by .github/workflows/codeql.yml, which selects the security-and-quality suite.
+# These two quality queries only suggest rewriting a foreach as .Where()/.Select(); they flag no defect, and here they
+# made up most of the open alerts. Every security query and every other quality query still runs.
+query-filters:
+  - exclude:
+      id: cs/linq/missed-where
+  - exclude:
+      id: cs/linq/missed-select

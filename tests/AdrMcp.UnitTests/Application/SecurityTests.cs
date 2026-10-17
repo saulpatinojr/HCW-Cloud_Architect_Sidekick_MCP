@@ -71,7 +71,7 @@ public class TenantIsolationTests
     {
         var host = new TestHost();
         // Unknown properties are rejected by schema on the wire; at the binding level they are ignored and tenant still comes from the resolver.
-        var id = await host.CreateAdrAsync("T", "D");
+        await host.CreateAdrAsync("T", "D");
         var json = host.Store.RawJson("adrs", "tenant-a|ws-1").Single();
         Assert.Contains("\"tenantId\":\"tenant-a\"", json);
         Assert.Empty(host.Store.RawJson("adrs", "evil-tenant|ws-1"));

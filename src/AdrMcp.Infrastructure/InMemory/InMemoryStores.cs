@@ -151,7 +151,11 @@ public sealed class InMemoryFindingRepository : IFindingRepository
     public Task UpsertAsync(Finding f, CancellationToken ct) { _f[($"{f.TenantId}|{f.WorkspaceId}", f.Id)] = f; return Task.CompletedTask; }
     public Task<Finding?> GetAsync(string tenantId, string workspaceId, string id, CancellationToken ct) => Task.FromResult(_f.TryGetValue(($"{tenantId}|{workspaceId}", id), out var f) ? f : null);
     public Task<IReadOnlyList<Finding>> ListForAdrAsync(string tenantId, string workspaceId, string adrId, FindingKind? kind, bool openOnly, CancellationToken ct)
-        => Task.FromResult<IReadOnlyList<Finding>>(_f.Where(kv => kv.Key.Pk == $"{tenantId}|{workspaceId}").Select(kv => kv.Value).Where(f => (f.AdrId == adrId || (f is ContradictionFinding c && c.OtherAdrId == adrId)) && (kind is null || f.Kind == kind) && (!openOnly || f.ReviewStatus == FindingReviewStatus.Open)).OrderByDescending(f => f.Provenance.Timestamp).ToList());
+        => Task.FromResult<IReadOnlyList<Finding>>(_f.Where(kv => kv.Key.Pk == $"{tenantId}|{workspaceId}").Select(kv => kv.Value)
+            .Where(f => f.AdrId == adrId || (f is ContradictionFinding c && c.OtherAdrId == adrId))
+            .Where(f => kind is null || f.Kind == kind)
+            .Where(f => !openOnly || f.ReviewStatus == FindingReviewStatus.Open)
+            .OrderByDescending(f => f.Provenance.Timestamp).ToList());
     public Task<Finding?> GetLatestByFingerprintAsync(string tenantId, string workspaceId, string fp, CancellationToken ct)
         => Task.FromResult(_f.Where(kv => kv.Key.Pk == $"{tenantId}|{workspaceId}").Select(kv => kv.Value).Where(f => f.FingerprintKey == fp).OrderByDescending(f => f.Provenance.Timestamp).FirstOrDefault());
     public int Count => _f.Count;

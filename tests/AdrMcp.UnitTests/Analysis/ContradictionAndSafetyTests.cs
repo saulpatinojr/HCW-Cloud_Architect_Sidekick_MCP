@@ -134,6 +134,20 @@ public class ClaimExtractorTests
         Assert.Contains(claims, c => c.Kind == ClaimKind.InfrastructureRequirement && c.Subject == "storage accounts" && c.Object == "private endpoints");
         Assert.Contains(claims, c => c.Kind == ClaimKind.IntegrationStyle && c.Object == "async" && c.Scope.Environment == "production");
     }
+
+    [Theory]
+    [InlineData("Users authenticate with Microsoft Entra ID.", "entra-id")]
+    [InlineData("Clients authenticate using Azure AD.", "entra-id")]
+    [InlineData("Partners authenticate via OAuth 2.0.", "oauth2-oidc")]
+    [InlineData("Apps authenticate through OpenID Connect.", "oauth2-oidc")]
+    [InlineData("Employees authenticate via SAML.", "saml")]
+    [InlineData("Integrations authenticate with API keys.", "api-key")]
+    [InlineData("Legacy tools authenticate with basic auth.", "basic")]
+    [InlineData("Devices authenticate with client certificates.", "mtls")]
+    [InlineData("Services authenticate using mTLS.", "mtls")]
+    [InlineData("Functions authenticate using managed identities.", "managed-identity")]
+    public void Auth_strategy_is_normalized(string decision, string expected)
+        => Assert.Contains(new RegexClaimExtractor().Extract(Adr(decision)), c => c.Kind == ClaimKind.AuthStrategy && c.Object == expected);
 }
 
 public class SafetyReviewTests

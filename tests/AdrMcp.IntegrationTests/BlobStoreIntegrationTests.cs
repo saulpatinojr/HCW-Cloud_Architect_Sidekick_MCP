@@ -25,7 +25,7 @@ public class BlobStoreIntegrationTests : IClassFixture<AzuriteFixture>
 
         using var http = new HttpClient();
         var bytes = Encoding.UTF8.GetBytes("{\"dependencies\":{\"express\":\"4.19.2\"}}");
-        var put = new HttpRequestMessage(HttpMethod.Put, grant.UploadUri) { Content = new ByteArrayContent(bytes) };
+        using var put = new HttpRequestMessage(HttpMethod.Put, grant.UploadUri) { Content = new ByteArrayContent(bytes) };
         foreach (var h in grant.RequiredHeaders) if (h.Key != "Content-Type") put.Headers.TryAddWithoutValidation(h.Key, h.Value);
         put.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var resp = await http.SendAsync(put);
@@ -40,7 +40,7 @@ public class BlobStoreIntegrationTests : IClassFixture<AzuriteFixture>
 
         // A different blob name with the same SAS is rejected (single-object scope).
         var other = new UriBuilder(grant.UploadUri) { Path = grant.UploadUri.AbsolutePath.Replace("package.json", "other.json") }.Uri;
-        var otherPut = new HttpRequestMessage(HttpMethod.Put, other) { Content = new ByteArrayContent(bytes) };
+        using var otherPut = new HttpRequestMessage(HttpMethod.Put, other) { Content = new ByteArrayContent(bytes) };
         otherPut.Headers.TryAddWithoutValidation("x-ms-blob-type", "BlockBlob");
         Assert.False((await http.SendAsync(otherPut)).IsSuccessStatusCode);
 

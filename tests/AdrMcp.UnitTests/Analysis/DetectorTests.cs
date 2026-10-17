@@ -116,6 +116,35 @@ public class DriftDetectorTests
     }
 
     [Fact]
+    public void Infrastructure_requirement_detector_ends_each_resource_at_its_own_brace()
+    {
+        // An apostrophe in a comment or an escaped backslash used to leave the brace matcher "inside a string", so a
+        // non-compliant resource swallowed the compliant one after it and the claim came out Compliant.
+        var d = new InfrastructureRequirementDriftDetector();
+        var claim = new DecisionClaim("c5", ClaimKind.InfrastructureRequirement, "storage accounts", "must have", "TLS 1.2", ClaimScope.Global);
+        var good = "resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {\n  name: 'a'\n  properties: {\n    minimumTlsVersion: 'TLS1_2'\n  }\n}";
+        var bad = new[]
+        {
+            "resource sb 'Microsoft.Storage/storageAccounts@2023-05-01' = {\n  // legacy account, don't touch yet\n  name: 'b'\n  properties: {\n    minimumTlsVersion: 'TLS1_0'\n  }\n}",
+            "resource sb 'Microsoft.Storage/storageAccounts@2023-05-01' = {\n  name: 'b'\n  tags: { root: 'C:\\\\' }\n  properties: {\n    minimumTlsVersion: 'TLS1_0'\n  }\n}",
+            "resource sb 'Microsoft.Storage/storageAccounts@2023-05-01' = {\n  name: 'b'\n  /* it's { not } code */\n  properties: {\n    description: '''\nit's a } brace\n'''\n    minimumTlsVersion: 'TLS1_0'\n  }\n}",
+            "resource sb 'Microsoft.Storage/storageAccounts@2023-05-01' = {\n  name: 'st${replace(prefix, '-', '')}'\n  properties: {\n    minimumTlsVersion: 'TLS1_0'\n  }\n}",
+        };
+        foreach (var b in bad)
+        {
+            var result = d.Evaluate(claim, Set(("infra/a.bicep", b + "\n" + good)));
+            Assert.Equal(DriftClaimResult.Drifted, result.Result);
+            Assert.Contains(result.Evidence, e => e.Kind == "violating-resource" && e.LineNumber == 1);
+            Assert.Contains(result.Evidence, e => e.Kind == "compliant-resource");
+        }
+        var tfBad = "resource \"azurerm_storage_account\" \"bad\" {\n  # it's legacy\n  name = \"bad-${lookup(var.names, \"k\")}\"\n  min_tls_version = \"TLS1_0\"\n}";
+        var tfGood = "resource \"azurerm_storage_account\" \"good\" {\n  name = \"good\"\n  min_tls_version = \"TLS1_2\"\n}";
+        var tf = d.Evaluate(claim, Set(("main.tf", tfBad + "\n" + tfGood)));
+        Assert.Equal(DriftClaimResult.Drifted, tf.Result);
+        Assert.Contains(tf.Evidence, e => e.Kind == "violating-resource" && e.LineNumber == 1);
+    }
+
+    [Fact]
     public void Database_ownership_detector_flags_foreign_service_references()
     {
         var d = new DatabaseOwnershipDriftDetector();

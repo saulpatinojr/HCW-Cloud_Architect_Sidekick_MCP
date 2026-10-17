@@ -143,7 +143,8 @@ All settings are plain app settings (`Section__Key`). Placeholders only; secrets
 | `Auth__Mode` | `FunctionKey` | `FunctionKey` (system key at the edge, static tenant binding) or `EntraBuiltIn` (App Service auth, roles from Entra app roles) |
 | `Auth__StaticRoles__n` | none → Reader | Roles for the key-based principal (`Reader`, `Author`, `Approver`, `Admin`) |
 | `Auth__DefaultRoleWhenNoAppRoles` | `None` | Entra mode: role for a caller with no mapped app role (`None` refuses it; `Reader` lets any tenant user read) |
-| `Auth__TenantWorkspaces__<tenant>__n` | `default` | Workspaces a tenant may use |
+| `Auth__Tenants__n__Id` / `__MapTo` / `__Workspaces__n` | none | Entra mode: enrolled tenant (tid GUID), optional ADR tenant ID to store it under, and its workspaces (`default` when empty). Once any tenant is enrolled, other tenants are refused; each tenant needs its own ADR tenant ID. Bicep enrolls the deployment tenant |
+| `Auth__TenantWorkspaces__<tenant>__n` | `default` | Workspaces a tenant may use, keyed by ADR tenant ID. Linux app setting names allow only letters, digits and `_`, so use `Auth__Tenants` for a GUID tenant |
 | `Adr__PrincipalHashSalt` | Key Vault reference | Salt for hashed principals in audit/memory |
 | `Uploads__MaxFileBytes` | `52428800` | Upload size cap (50 MiB) |
 | `Uploads__UploadUrlTtlMinutes` | `15` | Lifetime of the single-blob upload grant |

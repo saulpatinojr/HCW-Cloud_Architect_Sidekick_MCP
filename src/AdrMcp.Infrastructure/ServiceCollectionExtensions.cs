@@ -31,6 +31,9 @@ public static class ServiceCollectionExtensions
         services.Configure<AuditOptions>(configuration.GetSection(AuditOptions.Section));
         services.Configure<IdempotencyOptions>(configuration.GetSection(IdempotencyOptions.Section));
         services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.Section));
+        services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();
+        services.AddOptions<AuthOptions>().ValidateOnStart();
+        services.AddSingleton(sp => new TenantDirectory(sp.GetRequiredService<IOptions<AuthOptions>>().Value));
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton(PlatformAuthentication.FromConfiguration(configuration));

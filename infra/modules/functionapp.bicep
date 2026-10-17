@@ -118,6 +118,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES', value: entraScope }
         // Edge check on the token's tid claim, in addition to the tenant-specific issuer: only this tenant's tokens reach the app.
         { name: 'WEBSITE_AUTH_AAD_ALLOWED_TENANTS', value: entraTenant }
+        // Enroll the same tenant in the app (it then refuses any other tid) so scheduled maintenance also covers it. Array form:
+        // Linux app setting names cannot hold a GUID key. Add workspaces with Auth__Tenants__0__Workspaces__0..n (docs/05).
+        { name: 'Auth__Tenants__0__Id', value: entraTenant }
       ] : [])
     }
   }

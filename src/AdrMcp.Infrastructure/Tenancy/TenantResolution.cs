@@ -33,12 +33,13 @@ public sealed record PlatformAuthentication(bool Enabled)
 public sealed class HeaderTenantResolver : ITenantResolver
 {
     private readonly AuthOptions _o;
+    private readonly TenantDirectory _tenants;
     private readonly PlatformAuthentication _platform;
     private readonly ILogger<HeaderTenantResolver> _logger;
 
-    public HeaderTenantResolver(IOptions<AuthOptions> o, PlatformAuthentication platform, ILogger<HeaderTenantResolver> logger)
+    public HeaderTenantResolver(IOptions<AuthOptions> o, TenantDirectory tenants, PlatformAuthentication platform, ILogger<HeaderTenantResolver> logger)
     {
-        _o = o.Value; _platform = platform; _logger = logger;
+        _o = o.Value; _tenants = tenants; _platform = platform; _logger = logger;
         if (IsEntra && !_platform.Enabled)
             _logger.LogError("Auth:Mode is EntraBuiltIn but App Service Authentication is not enabled ({Setting} is not true); every request will be rejected.", PlatformAuthentication.EnabledSetting);
     }
@@ -56,7 +57,7 @@ public sealed class HeaderTenantResolver : ITenantResolver
     {
         var roles = _o.StaticRoles.Select(r => Enum.TryParse<Role>(r, true, out var role) ? role : (Role?)null).Where(r => r is not null).Select(r => r!.Value).ToHashSet();
         if (roles.Count == 0) { roles.Add(Role.Reader); _logger.LogWarning("Auth:StaticRoles is empty; the function-key principal is Reader only."); }
-        var workspaces = _o.TenantWorkspaces.TryGetValue(_o.StaticTenantId, out var ws) ? ws.ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { _o.StaticWorkspaceId };
+        var workspaces = _tenants.WorkspacesFor(_o.StaticTenantId, _o.StaticWorkspaceId);
         return new TenantContext(_o.StaticTenantId, _o.StaticPrincipalId, _o.StaticPrincipalId, roles, workspaces, _o.StaticWorkspaceId, "FunctionKey", correlationId, sessionId);
     }
 
@@ -85,13 +86,13 @@ public sealed class HeaderTenantResolver : ITenantResolver
         if (tid is null || oid is null) throw new DomainException(ErrorCodes.Unauthorized, "Principal is missing tenant or object identifier claims.");
         var display = Claim("preferred_username", "upn", "name") ?? oid;
 
-        var tenantId = _o.TenantMap.Count == 0 ? tid : _o.TenantMap.TryGetValue(tid, out var mapped) ? mapped : throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
+        if (!_tenants.TryResolveTenant(tid, out var tenantId)) throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
         var roleClaims = principal.Claims?.Where(c => c.Typ is "roles" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role").Select(c => c.Val) ?? Array.Empty<string>();
         var roles = new HashSet<Role>();
         foreach (var rc in roleClaims) if (_o.AppRoleMap.TryGetValue(rc, out var mappedRole) && Enum.TryParse<Role>(mappedRole, true, out var role)) roles.Add(role);
         var grantsDefault = !string.Equals(_o.DefaultRoleWhenNoAppRoles, "None", StringComparison.OrdinalIgnoreCase);
         if (roles.Count == 0 && grantsDefault && Enum.TryParse<Role>(_o.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
-        var workspaces = _o.TenantWorkspaces.TryGetValue(tenantId, out var ws) ? ws.ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { _o.DefaultWorkspaceId };
+        var workspaces = _tenants.WorkspacesFor(tenantId, _o.DefaultWorkspaceId);
         var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
         return new TenantContext(tenantId, appId is not null && oid == appId ? $"app:{appId}" : $"user:{oid}", display, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
     }
@@ -123,7 +124,7 @@ public sealed class RoleAuthorizationService : IAuthorizationService
     {
         var ws = string.IsNullOrWhiteSpace(requested) ? ctx.DefaultWorkspaceId : requested.Trim();
         if (string.IsNullOrWhiteSpace(ws)) throw new ValidationException("workspaceId is required.");
-        if (ws.Length > 64 || !ws.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.')) throw new ValidationException("workspaceId contains invalid characters.");
+        if (!Identifiers.IsValid(ws)) throw new ValidationException("workspaceId contains invalid characters.");
         if (!ctx.CanAccessWorkspace(ws)) throw new ForbiddenException($"Workspace '{ws}' is not accessible to this principal.", ErrorCodes.TenantMismatch);
         return ws;
     }

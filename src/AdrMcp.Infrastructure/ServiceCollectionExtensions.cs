@@ -15,6 +15,7 @@ using Azure.Storage.Queues;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AdrMcp.Infrastructure;
 
@@ -59,7 +60,13 @@ public static class ServiceCollectionExtensions
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.Section));
 
         var provider = configuration[$"{PersistenceOptions.Section}:Provider"] ?? "Cosmos";
-        if (string.Equals(provider, "InMemory", StringComparison.OrdinalIgnoreCase))
+        var inMemory = string.Equals(provider, "InMemory", StringComparison.OrdinalIgnoreCase);
+
+        // Durable persistence must never hash principals with a placeholder or unresolved salt: fail at host start.
+        services.AddSingleton<IValidateOptions<AdrOptions>>(new PrincipalHashSaltValidator(requireConfiguredSalt: !inMemory));
+        services.AddOptions<AdrOptions>().ValidateOnStart();
+
+        if (inMemory)
         {
             services.AddSingleton<InMemoryDocumentStore>();
             services.AddSingleton<IAdrRepository, InMemoryAdrRepository>();

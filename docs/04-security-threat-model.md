@@ -5,7 +5,7 @@
 | Layer | Mechanism | Notes |
 |---|---|---|
 | Edge (GA default) | `mcp_extension` **system key** in `x-functions-key` header | Rotated with `az functionapp keys set`. Single shared secret per deployment → suitable for a single team/tenant. Never written to logs (redactor strips `x-functions-key` and `code=`). |
-| Edge (recommended for production, **preview**) | **Built-in MCP authentication** (App Service Authentication, Entra ID, OAuth 2.1 with protected resource metadata) | Set `Auth:Mode=EntraBuiltIn`, enable auth with "Turn on MCP authentication" or the manual steps in the tutorial, add `WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES`, pre-authorize client app ids (Claude's client id is required because Entra lacks DCR — see docs/06). The webhook level becomes `Anonymous` because the platform now authenticates. |
+| Edge (recommended for production, **preview**) | **Built-in MCP authentication** (App Service Authentication, Entra ID, OAuth 2.1 with protected resource metadata) | Deploy with `authMode=EntraBuiltIn` and `entraClientId` (the server app registration): Bicep then configures App Service Authentication (`authsettingsV2`, require authentication, 401) and `WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES`, and fails the deployment if the client id is missing. Pre-authorize client app ids (Claude's client id is required because Entra lacks DCR — see docs/06). The webhook level becomes `Anonymous` only together with that configuration, because the platform then authenticates. |
 | Server | `HeaderTenantResolver` parses `X-MS-CLIENT-PRINCIPAL` (Entra mode only; the platform strips inbound copies) → tenant (`tid`), principal (`oid`/`azp`), roles (`roles` claim mapped by `Auth:AppRoleMap`), workspaces (`Auth:TenantWorkspaces`). In FunctionKey mode the header is **ignored** (spoofable) and a static binding is used. | Tests: `TenantIsolationTests`, `AuthorizationTests`. |
 | Server | `RoleAuthorizationService` checks the tool's `Permission` (from `ToolCatalog`) and resolves/validates `workspaceId` against the principal's allowed set. | Reader ⊂ Author ⊂ Approver ⊂ Admin. |
 
@@ -16,7 +16,7 @@
 - Every Cosmos document lives in partition `"{tenantId}|{workspaceId}"`; every repository call takes tenant and workspace explicitly and queries are single-partition. The in-memory and Cosmos implementations both re-check `TenantId/WorkspaceId` on read (defence in depth).
 - Blob paths are `{tenantId}/{workspaceId}/{id}/{safeName}`; `BlobEvidenceStore.ValidatePath` rejects anything that is not at least tenant/workspace scoped or contains traversal.
 - Decision memory, audit, idempotency and jobs share the same partitioning; the memory service additionally filters by tenant/workspace after retrieval.
-- Principals are stored hashed (`SHA-256(salt:principal)` first 32 hex chars) in audit and memory records; the salt comes from Key Vault.
+- Principals are stored hashed (`SHA-256(salt:principal)` first 32 hex chars) in audit and memory records; the salt comes from Key Vault. With durable persistence the app refuses to start if the salt is the default placeholder, shorter than 32 characters, or an unresolved Key Vault reference.
 
 ## 3. Managed identity and least privilege
 

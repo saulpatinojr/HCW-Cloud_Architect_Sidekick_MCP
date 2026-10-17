@@ -15,6 +15,16 @@ param maximumInstanceCount int
 param vnetIntegrationSubnetId string = ''
 @allowed([ '8.0', '10.0' ])
 param dotnetVersion string = '10.0'
+param entraClientId string = ''
+param entraTenantId string = ''
+
+var entraEnabled = authMode == 'EntraBuiltIn'
+// EntraBuiltIn makes the MCP webhook Anonymous; without App Service Authentication in front of it the endpoint would be open,
+// so fail the deployment instead of deploying that combination.
+var entraScope = entraEnabled
+  ? (empty(entraClientId) ? fail('authMode EntraBuiltIn requires entraClientId (the MCP server app registration client ID).') : 'api://${entraClientId}/user_impersonation')
+  : ''
+var entraIssuer = '${environment().authentication.loginEndpoint}${empty(entraTenantId) ? tenant().tenantId : entraTenantId}/v2.0'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageAccountName }
 
@@ -62,7 +72,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       http20Enabled: true
-      appSettings: [
+      appSettings: concat([
         // Host storage with managed identity (no connection string). The MCP extension's SSE transport also uses this account.
         { name: 'AzureWebJobsStorage__accountName', value: storage.name }
         { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
@@ -91,10 +101,35 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'Uploads__UploadUrlTtlMinutes', value: '15' }
         { name: 'Uploads__BlockOnCriticalSafetyFinding', value: 'true' }
         { name: 'Uploads__RequireDefenderScanResult', value: 'false' }
-        // Built-in MCP auth: when authMode is EntraBuiltIn the function key requirement is removed and App Service Authentication must be enabled (docs/06-claude-connection.md).
-        { name: 'AzureFunctionsJobHost__extensions__mcp__system__webhookAuthorizationLevel', value: authMode == 'EntraBuiltIn' ? 'Anonymous' : 'System' }
-      ]
+        // Built-in MCP auth: with EntraBuiltIn, App Service Authentication (below) validates every request, so the function key requirement is removed.
+        { name: 'AzureFunctionsJobHost__extensions__mcp__system__webhookAuthorizationLevel', value: entraEnabled ? 'Anonymous' : 'System' }
+      ], entraEnabled ? [
+        // Protected resource metadata (RFC 9728) so MCP clients can discover the Entra scope (built-in MCP server authorization, preview).
+        { name: 'WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES', value: entraScope }
+      ] : [])
     }
+  }
+}
+
+// Built-in MCP server authorization: App Service Authentication requires an Entra token for this app before any function runs.
+resource authSettings 'Microsoft.Web/sites/config@2024-04-01' = if (entraEnabled) {
+  parent: functionApp
+  name: 'authsettingsV2'
+  properties: {
+    platform: { enabled: true }
+    globalValidation: {
+      requireAuthentication: true
+      unauthenticatedClientAction: 'Return401'
+      excludedPaths: [ '/api/health' ]   // anonymous liveness probe; returns no configuration or data
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: { clientId: entraClientId, openIdIssuer: entraIssuer }
+        validation: { allowedAudiences: [ 'api://${entraClientId}', entraClientId ] }
+      }
+    }
+    login: { tokenStore: { enabled: false } }
   }
 }
 

@@ -83,12 +83,14 @@ azd auth login
 azd init -e adr-dev                           # creates .azure/adr-dev
 azd env set AZURE_LOCATION eastus2            # a Flex Consumption region
 azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"   # grants you data-plane roles for testing (omit in prod)
-azd env set ADR_AUTH_MODE FunctionKey         # or EntraBuiltIn
+azd env set ADR_AUTH_MODE FunctionKey         # or EntraBuiltIn (then also: azd env set ADR_ENTRA_CLIENT_ID <server app client id>)
 azd env set ADR_PRIVATE_NETWORKING false      # true for private endpoints
 azd provision                                  # Bicep: RG, identity, storage, Cosmos, Key Vault, App Insights, Flex Consumption app, RBAC
 ```
 
-`scripts/postprovision.sh` creates the Key Vault secret `principal-hash-salt` (random) that the app reads through a Key Vault reference.
+`scripts/postprovision.sh` creates the Key Vault secret `principal-hash-salt` (random) that the app reads through a Key Vault reference. It never overwrites an existing secret, and it waits (up to ~5 minutes) for the Key Vault role assigned in the same provision to propagate instead of failing on the first 403.
+
+The app refuses to start with durable (Cosmos) persistence if `Adr:PrincipalHashSalt` is the built-in default, shorter than 32 characters, or an unresolved `@Microsoft.KeyVault(...)` reference — principal hashes in audit and memory would otherwise be guessable. If a first deployment does not start, check the app setting's Key Vault reference status (Portal → Function App → Environment variables), confirm the secret exists and the app identity holds Key Vault Secrets User, then restart the app.
 
 Preview before applying (recommended for existing environments):
 
@@ -119,10 +121,9 @@ ADR_MCP_KEY="$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mc
 
 ### Enable built-in Entra authentication (preview) instead of the key
 
-1. Deploy with `ADR_AUTH_MODE=EntraBuiltIn` (sets `AzureFunctionsJobHost__extensions__mcp__system__webhookAuthorizationLevel=Anonymous`).
-2. Portal → Function App → **AI (preview)** → **Turn on MCP authentication** (creates the Entra app registration, PRM settings and auth config), or follow the manual steps in the Microsoft tutorial (identity provider = Microsoft, "Require authentication", 401 for unauthenticated, token store on, `WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES=api://<client-id>/user_impersonation`).
-3. Add app roles `Adr.Reader/Author/Approver/Admin` to the registration and assign users; pre-authorize the client application ids you will use (see docs/06).
-4. Rotate/disable the system key: `az functionapp keys set -g $RG -n $APP --key-type systemKeys --key-name mcp_extension`.
+1. Register an Entra app for the MCP server (single tenant): under **Expose an API** set the Application ID URI to `api://<client-id>` and add the scope `user_impersonation`. Add app roles `Adr.Reader/Author/Approver/Admin`, assign users, and pre-authorize the client application ids you will use (see docs/06).
+2. `azd env set ADR_AUTH_MODE EntraBuiltIn` and `azd env set ADR_ENTRA_CLIENT_ID <client-id>` (optionally `ADR_ENTRA_TENANT_ID`; default is the deployment tenant), then `azd provision`. Bicep configures App Service Authentication (`authsettingsV2`: Microsoft provider, require authentication, 401 for unauthenticated requests, `/api/health` excluded), sets `WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES=api://<client-id>/user_impersonation`, and makes the MCP webhook `Anonymous` because the platform now authenticates. Provisioning **fails** if `EntraBuiltIn` is chosen without a client id, so the endpoint can never be deployed open. Don't change these settings in the portal: the next provision overwrites them.
+3. Rotate/disable the system key: `az functionapp keys set -g $RG -n $APP --key-type systemKeys --key-name mcp_extension`.
 
 ## Logs
 

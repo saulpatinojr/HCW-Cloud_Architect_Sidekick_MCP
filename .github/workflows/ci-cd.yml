@@ -142,11 +142,14 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       ADR_AUTH_MODE: ${{ vars.ADR_AUTH_MODE || 'FunctionKey' }}
       ADR_PRIVATE_NETWORKING: ${{ vars.ADR_PRIVATE_NETWORKING || 'false' }}
+      ADR_ENTRA_CLIENT_ID: ${{ vars.ADR_ENTRA_CLIENT_ID }}   # required only when ADR_AUTH_MODE=EntraBuiltIn
+      ADR_ENTRA_TENANT_ID: ${{ vars.ADR_ENTRA_TENANT_ID }}   # optional; empty = deployment tenant
     steps:
       - name: Preflight (required configuration)
         run: |
           missing=""
           for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_LOCATION; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ "$ADR_AUTH_MODE" = "EntraBuiltIn" ] && [ -z "$ADR_ENTRA_CLIENT_ID" ]; then missing="$missing ADR_ENTRA_CLIENT_ID"; fi
           if [ -n "$missing" ]; then echo "::error::ADR_DEPLOY_ENABLED is true but these variables are empty:$missing"; exit 1; fi
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -164,13 +167,42 @@ jobs:
       - name: What-if (plan, recorded in the job log; the environment approval happens before this job starts)
         run: |
           az deployment sub what-if --location "$AZURE_LOCATION" --template-file infra/main.bicep \
-            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" authMode="$ADR_AUTH_MODE" enablePrivateNetworking="$ADR_PRIVATE_NETWORKING"
+            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" authMode="$ADR_AUTH_MODE" enablePrivateNetworking="$ADR_PRIVATE_NETWORKING" \
+              entraClientId="$ADR_ENTRA_CLIENT_ID" entraTenantId="$ADR_ENTRA_TENANT_ID"
       - name: Provision
         run: azd provision --no-prompt
       - name: Deploy
-        run: azd deploy api --no-prompt
+        # On a first deployment the app identity's role on the deployment container may still be propagating (403); retry briefly.
+        run: |
+          for attempt in 1 2 3; do
+            azd deploy api --no-prompt && exit 0
+            [ "$attempt" -lt 3 ] && { echo "Deploy attempt $attempt failed; retrying in 60s"; sleep 60; }
+          done
+          echo "::error::azd deploy failed after 3 attempts"; exit 1
+      - name: Wait for the app to start
+        # The health probe is anonymous in both auth modes. If it never answers, the worker failed at startup: check the logs,
+        # e.g. an unresolved Key Vault reference for Adr__PrincipalHashSalt (fixed by restarting once the secret is readable).
+        run: |
+          URL=$(azd env get-value MCP_ENDPOINT); BASE="${URL%/runtime/webhooks/mcp}"
+          for _ in $(seq 1 30); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/health" || true)" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::$BASE/api/health did not return 200 within 5 minutes"; exit 1
       - name: Smoke test (key fetched into a masked variable, never echoed)
+        if: env.ADR_AUTH_MODE == 'FunctionKey'
         run: |
           APP=$(azd env get-value AZURE_FUNCTION_APP_NAME); RG=$(azd env get-value AZURE_RESOURCE_GROUP); URL=$(azd env get-value MCP_ENDPOINT)
-          KEY=$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv); echo "::add-mask::$KEY"
+          # The mcp_extension system key is created on the host's first start, so poll for it.
+          KEY=""
+          for _ in $(seq 1 18); do
+            KEY=$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv 2>/dev/null || true)
+            [ -n "$KEY" ] && break
+            sleep 10
+          done
+          [ -n "$KEY" ] || { echo "::error::mcp_extension system key not available after 3 minutes"; exit 1; }
+          echo "::add-mask::$KEY"
           ADR_MCP_KEY="$KEY" python3 scripts/smoke-test.py --url "$URL"   # key via environment, not the command line
+      - name: Smoke test skipped (Entra mode)
+        if: env.ADR_AUTH_MODE != 'FunctionKey'
+        run: echo "::notice title=Smoke test skipped::EntraBuiltIn needs a user token; run scripts/smoke-test.py --bearer <token> manually (docs/06-claude-connection.md)."

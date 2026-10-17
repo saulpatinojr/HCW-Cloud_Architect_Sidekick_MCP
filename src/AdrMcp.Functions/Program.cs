@@ -2,7 +2,9 @@ using AdrMcp.Analysis;
 using AdrMcp.Application.Services;
 using AdrMcp.Application.Tools;
 using AdrMcp.Functions.Jobs;
+using AdrMcp.Functions.Telemetry;
 using AdrMcp.Infrastructure;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +22,13 @@ if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_
     builder.Services
         .AddApplicationInsightsTelemetryWorkerService()
         .ConfigureFunctionsApplicationInsights();
+
+    // Local authentication is disabled on the Application Insights resource, so the worker SDK must authenticate with Entra ID
+    // using the same managed identity the host uses (see ApplicationInsightsAuthentication).
+    if (ApplicationInsightsAuthentication.TryCreateCredential(builder.Configuration["APPLICATIONINSIGHTS_AUTHENTICATION_STRING"], out var telemetryCredential))
+    {
+        builder.Services.Configure<TelemetryConfiguration>(config => config.SetAzureTokenCredential(telemetryCredential));
+    }
 }
 
 // The default worker rule drops Information logs for the App Insights provider; keep structured Information logs.

@@ -23,3 +23,24 @@ jobs:
           queries: security-and-quality
       - run: dotnet build AdrMcp.sln -c Release
       - uses: github/codeql-action/analyze@v4
+        with:
+          upload: failure-only   # the SARIF is uploaded below, after filtering
+          output: sarif-results
+      # Source generators ([GeneratedRegex], logging, Functions metadata) write *.g.cs files under obj/ during the
+      # build, and CodeQL reports them like our own code: hundreds of quality alerts nobody here can fix.
+      # paths-ignore can't exclude them (it only applies to build-mode none), so their results are dropped from
+      # the SARIF. Every query still runs on all handwritten code.
+      - name: Drop results in generated code
+        env:
+          GENERATED: '(^|/)obj/|\.g\.cs$'
+        run: |
+          for f in sarif-results/*.sarif; do
+            before=$(jq '[.runs[].results[]] | length' "$f")
+            jq --arg re "$GENERATED" '.runs[].results |= map(select(any(.locations[]?; (.physicalLocation.artifactLocation.uri // "") | test($re)) | not))' "$f" > "$f.tmp"
+            mv "$f.tmp" "$f"
+            echo "$f: kept $(jq '[.runs[].results[]] | length' "$f") of $before results; the rest are in generated code"
+          done
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-results
+          category: /language:csharp   # same category as before, so alerts in generated code close instead of lingering

@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows Keep
 - GitHub Actions moved to their Node 24 majors (checkout v7, setup-dotnet v6, upload-artifact v7, gitleaks-action v3, azure/login v3, labeler v7, stale v11, codeql-action v4 — v3 is deprecated in December 2026). Dependabot now groups action updates into one weekly PR.
 - Dependabot ignores Microsoft.ApplicationInsights.WorkerService 3.x (it removes types that Microsoft.Azure.Functions.Worker.ApplicationInsights 2.x loads, so the worker would crash at startup) and never updates the `samples/evidence` demo fixture.
 - Removed the unused NSubstitute test dependency.
+- CodeQL drops results located in source-generated code (`obj/`, `*.g.cs`, e.g. `RegexGenerator.g.cs` from `[GeneratedRegex]`) before uploading the SARIF; the quality alerts there are closed by the next scan of `main`. All queries still run on handwritten code.
+- `samples/evidence/package.json` (detector demo fixture, never installed) moves `vitest` to `^5.0.5`, which closes the critical Dependabot alert for Vitest UI file read on Windows (< 3.2.6).
 - Runtime moves from .NET 8 to .NET 10 (LTS) ahead of .NET 8 end of support on 2026-11-10 (ADR-0007, Proposed): `net10.0`, SDK 10.0.1xx, and the Flex Consumption runtime version is now the `functionsDotnetVersion` Bicep parameter (default `10.0`).
 - Safety rule SR-EOL-001 is date-aware for .NET: it compares official end-of-support dates (.NET Core 2.1 to .NET 10) with the review date, so it flags .NET 8 and 9 as end of life from 2026-11-11. It also raises a Medium warning in the 90 days before end of support, and now matches `dotnet 6`, `net8.0` and `netcoreapp3.1`.
 

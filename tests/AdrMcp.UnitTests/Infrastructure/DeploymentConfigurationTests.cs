@@ -130,9 +130,9 @@ public class EntraReadinessTests
         // WEBSITE_AUTH_ENABLED must come from the platform. Setting it as an app setting would let Entra mode trust a forged
         // X-MS-CLIENT-PRINCIPAL header while App Service Authentication is off.
         var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "AdrMcp.sln"))) root = root.Parent;
+        while (root is not null && !File.Exists(Path.Join(root.FullName, "AdrMcp.sln"))) root = root.Parent;
         Assert.NotNull(root);
-        var offenders = Directory.EnumerateFiles(Path.Combine(root.FullName, "infra"), "*.*", SearchOption.AllDirectories)
+        var offenders = Directory.EnumerateFiles(Path.Join(root.FullName, "infra"), "*.*", SearchOption.AllDirectories)
             .Where(f => File.ReadAllText(f).Contains(PlatformAuthentication.EnabledSetting, StringComparison.OrdinalIgnoreCase))
             .ToList();
         Assert.Empty(offenders);

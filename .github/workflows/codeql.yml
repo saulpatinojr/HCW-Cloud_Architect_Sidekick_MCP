@@ -41,7 +41,9 @@ jobs:
             mv "$f.tmp" "$f"
             echo "$f: kept $(jq '[.runs[].results[]] | length' "$f") of $before results; the rest are in generated code"
           done
+      # The category names this scan configuration on GitHub. Changing it starts a new configuration, and the old
+      # one's alerts stay open until it is deleted (any of its alerts > Affected branches > main > delete).
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: sarif-results
-          category: /language:csharp   # same category as before, so alerts in generated code close instead of lingering
+          category: /language:csharp

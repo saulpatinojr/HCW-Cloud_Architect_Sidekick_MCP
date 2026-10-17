@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.Section));
 
         services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton(PlatformAuthentication.FromConfiguration(configuration));
         services.AddSingleton<ITenantResolver, HeaderTenantResolver>();
         services.AddSingleton<IAuthorizationService, RoleAuthorizationService>();
 

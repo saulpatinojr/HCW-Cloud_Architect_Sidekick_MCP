@@ -37,10 +37,12 @@ public class PrincipalHashSaltValidationTests
     public void InMemory_persistence_accepts_any_salt()
         => Assert.True(new PrincipalHashSaltValidator(requireConfiguredSalt: false).Validate(null, new AdrOptions()).Succeeded);
 
-    [Fact]
-    public async Task Host_start_fails_fast_with_cosmos_persistence_and_the_default_salt()
+    [Theory]
+    [InlineData("Cosmos")]
+    [InlineData(null)]   // Persistence:Provider unset defaults to Cosmos
+    public async Task Host_start_fails_fast_with_durable_persistence_and_the_default_salt(string? provider)
     {
-        using var host = BuildHost(new() { ["Persistence:Provider"] = "Cosmos" });
+        using var host = BuildHost(new() { ["Persistence:Provider"] = provider });
         var ex = await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
         Assert.Contains("Adr:PrincipalHashSalt", ex.Message);
     }

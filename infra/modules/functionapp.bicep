@@ -17,14 +17,24 @@ param vnetIntegrationSubnetId string = ''
 param dotnetVersion string = '10.0'
 param entraClientId string = ''
 param entraTenantId string = ''
+@description('Comma-separated client IDs of the applications allowed to obtain tokens for this server.')
+param entraAllowedClientIds string = ''
 
 var entraEnabled = authMode == 'EntraBuiltIn'
+var entraAllowedApps = filter(map(split(entraAllowedClientIds, ','), id => trim(id)), id => !empty(id))
+var entraTenant = empty(entraTenantId) ? tenant().tenantId : entraTenantId
 // EntraBuiltIn makes the MCP webhook Anonymous; without App Service Authentication in front of it the endpoint would be open,
-// so fail the deployment instead of deploying that combination.
+// and without an allowed-application list any app in the tenant could obtain a token for it. Fail the deployment instead.
 var entraScope = entraEnabled
-  ? (empty(entraClientId) ? fail('authMode EntraBuiltIn requires entraClientId (the MCP server app registration client ID).') : 'api://${entraClientId}/user_impersonation')
+  ? (length(entraClientId) != 36
+      ? fail('authMode EntraBuiltIn requires entraClientId: the client ID (GUID) of the MCP server app registration.')
+      : (length(entraTenant) != 36
+          ? fail('entraTenantId must be a tenant ID (GUID), or empty for the deployment tenant.')
+          : (empty(entraAllowedApps)
+              ? fail('authMode EntraBuiltIn requires entraAllowedClientIds: the client IDs of the applications allowed to call the server.')
+              : 'api://${entraClientId}/user_impersonation')))
   : ''
-var entraIssuer = '${environment().authentication.loginEndpoint}${empty(entraTenantId) ? tenant().tenantId : entraTenantId}/v2.0'
+var entraIssuer = '${environment().authentication.loginEndpoint}${entraTenant}/v2.0'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageAccountName }
 
@@ -106,16 +116,19 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       ], entraEnabled ? [
         // Protected resource metadata (RFC 9728) so MCP clients can discover the Entra scope (built-in MCP server authorization, preview).
         { name: 'WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES', value: entraScope }
+        // Edge check on the token's tid claim, in addition to the tenant-specific issuer: only this tenant's tokens reach the app.
+        { name: 'WEBSITE_AUTH_AAD_ALLOWED_TENANTS', value: entraTenant }
       ] : [])
     }
   }
 }
 
-// Built-in MCP server authorization: App Service Authentication requires an Entra token for this app before any function runs.
-resource authSettings 'Microsoft.Web/sites/config@2024-04-01' = if (entraEnabled) {
+// Built-in MCP server authorization: App Service Authentication requires an Entra token for this app, issued to one of the
+// allowed client applications, before any function runs. Always deployed so that switching back to FunctionKey turns it off.
+resource authSettings 'Microsoft.Web/sites/config@2024-04-01' = {
   parent: functionApp
   name: 'authsettingsV2'
-  properties: {
+  properties: entraEnabled ? {
     platform: { enabled: true }
     globalValidation: {
       requireAuthentication: true
@@ -126,10 +139,15 @@ resource authSettings 'Microsoft.Web/sites/config@2024-04-01' = if (entraEnabled
       azureActiveDirectory: {
         enabled: true
         registration: { clientId: entraClientId, openIdIssuer: entraIssuer }
-        validation: { allowedAudiences: [ 'api://${entraClientId}', entraClientId ] }
+        validation: {
+          allowedAudiences: [ 'api://${entraClientId}', entraClientId ]
+          defaultAuthorizationPolicy: { allowedApplications: entraAllowedApps }
+        }
       }
     }
     login: { tokenStore: { enabled: false } }
+  } : {
+    platform: { enabled: false }
   }
 }
 

@@ -16,7 +16,7 @@ No time estimates by design. Each phase lists features, dependencies, acceptance
 
 ## Phase 2 — Production hardening
 
-**Features.** Built-in Entra auth as default with pre-authorized Claude clients; private endpoints + Front Door/APIM with per-client rate limiting and WAF; mandatory audit (fail call on audit failure); Key Vault reference fail-fast; Defender for Storage malware verdict required; archive expansion job with zip-bomb limits; PDF/image text extraction (Document Intelligence) behind `IContentSafetyService`; Azure AI Content Safety Prompt Shields + Language PII as additional **labelled** detectors; Durable Functions for multi-step imports; alerting on drift status changes (Event Grid → Teams/email); .NET 10 upgrade; load tests; chaos tests for queue poison paths; SBOM generation.
+**Features.** Built-in Entra auth as default with pre-authorized Claude clients; private endpoints + Front Door/APIM with per-client rate limiting and WAF; mandatory audit (fail call on audit failure); Defender for Storage malware verdict required; archive expansion job with zip-bomb limits; PDF/image text extraction (Document Intelligence) behind `IContentSafetyService`; Azure AI Content Safety Prompt Shields + Language PII as additional **labelled** detectors; Durable Functions for multi-step imports; alerting on drift status changes (Event Grid → Teams/email); .NET 10 upgrade; load tests; chaos tests for queue poison paths; SBOM generation.
 
 **Dependencies.** Identity team for app registrations and consent; network team for VNet/DNS; Defender plan; Content Safety resource.
 

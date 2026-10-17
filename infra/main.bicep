@@ -26,6 +26,9 @@ param entraClientId string = ''
 @description('Entra tenant that issues tokens for entraClientId. Empty means the deployment tenant.')
 param entraTenantId string = ''
 
+@description('Comma-separated client IDs of the applications allowed to call the server (for example your Claude Code public client and Claude connector app). Required when authMode is EntraBuiltIn.')
+param entraAllowedClientIds string = ''
+
 @description('Enable VNet integration with private endpoints for Storage, Cosmos DB and Key Vault (production option).')
 param enablePrivateNetworking bool = false
 
@@ -151,6 +154,7 @@ module functionApp './modules/functionapp.bicep' = {
     dotnetVersion: functionsDotnetVersion
     entraClientId: entraClientId
     entraTenantId: entraTenantId
+    entraAllowedClientIds: entraAllowedClientIds
     vnetIntegrationSubnetId: enablePrivateNetworking ? network.?outputs.appSubnetId ?? '' : ''
   }
 }

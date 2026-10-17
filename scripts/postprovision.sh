@@ -5,12 +5,18 @@
 # That role assignment is created by the same `azd provision` run, and Azure RBAC can take several minutes to propagate.
 # A 403 therefore means "not authorized yet", not "secret missing": retry with backoff, and create the secret only after
 # Key Vault has answered SecretNotFound, so an existing salt is never overwritten (that would orphan every stored hash).
+# A 403 caused by the vault firewall or private endpoint is different: waiting does not fix it, so fail fast.
 set -euo pipefail
 VAULT="${AZURE_KEY_VAULT_NAME:?AZURE_KEY_VAULT_NAME output missing}"
 SECRET="principal-hash-salt"
 MAX_ATTEMPTS="${ADR_KV_MAX_ATTEMPTS:-20}"
 DELAY_SECONDS="${ADR_KV_RETRY_DELAY:-15}"
 
+# The salt goes to az through a private temp file, never on the command line (visible to other users via the process list).
+salt_file=$(mktemp)
+trap 'rm -f "$salt_file"' EXIT
+
+is_network_blocked() { case "$1" in *ForbiddenByFirewall*|*ForbiddenByConnection*) return 0 ;; *) return 1 ;; esac; }
 is_forbidden() { case "$1" in *Forbidden*|*"Status code 403"*|*"(403)"*) return 0 ;; *) return 1 ;; esac; }
 
 attempt=1
@@ -20,11 +26,16 @@ while :; do
     break
   fi
   if [[ "$out" == *SecretNotFound* ]]; then
-    salt=$(openssl rand -base64 48)
-    if out=$(az keyvault secret set --vault-name "$VAULT" --name "$SECRET" --value "$salt" --query id -o tsv 2>&1); then
+    openssl rand -base64 48 | tr -d '\n' > "$salt_file"
+    if out=$(az keyvault secret set --vault-name "$VAULT" --name "$SECRET" --file "$salt_file" --encoding utf-8 --query id -o tsv 2>&1); then
       echo "Created Key Vault secret $SECRET in $VAULT"
       break
     fi
+  fi
+  if is_network_blocked "$out"; then
+    echo "$out" >&2
+    echo "Key Vault $VAULT rejected this machine at the network level (private networking or firewall). Run 'azd provision' from a network that can reach the vault's private endpoint, or create the $SECRET secret from there." >&2
+    exit 1
   fi
   if ! is_forbidden "$out"; then
     echo "$out" >&2

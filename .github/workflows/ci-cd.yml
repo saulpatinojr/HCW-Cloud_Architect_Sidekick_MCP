@@ -144,12 +144,15 @@ jobs:
       ADR_PRIVATE_NETWORKING: ${{ vars.ADR_PRIVATE_NETWORKING || 'false' }}
       ADR_ENTRA_CLIENT_ID: ${{ vars.ADR_ENTRA_CLIENT_ID }}   # required only when ADR_AUTH_MODE=EntraBuiltIn
       ADR_ENTRA_TENANT_ID: ${{ vars.ADR_ENTRA_TENANT_ID }}   # optional; empty = deployment tenant
+      ADR_ENTRA_ALLOWED_CLIENT_IDS: ${{ vars.ADR_ENTRA_ALLOWED_CLIENT_IDS }}   # EntraBuiltIn: comma-separated client IDs allowed to call
     steps:
       - name: Preflight (required configuration)
         run: |
           missing=""
           for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_LOCATION; do [ -n "${!v}" ] || missing="$missing $v"; done
-          if [ "$ADR_AUTH_MODE" = "EntraBuiltIn" ] && [ -z "$ADR_ENTRA_CLIENT_ID" ]; then missing="$missing ADR_ENTRA_CLIENT_ID"; fi
+          if [ "$ADR_AUTH_MODE" = "EntraBuiltIn" ]; then
+            for v in ADR_ENTRA_CLIENT_ID ADR_ENTRA_ALLOWED_CLIENT_IDS; do [ -n "${!v}" ] || missing="$missing $v"; done
+          fi
           if [ -n "$missing" ]; then echo "::error::ADR_DEPLOY_ENABLED is true but these variables are empty:$missing"; exit 1; fi
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -168,7 +171,7 @@ jobs:
         run: |
           az deployment sub what-if --location "$AZURE_LOCATION" --template-file infra/main.bicep \
             --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" authMode="$ADR_AUTH_MODE" enablePrivateNetworking="$ADR_PRIVATE_NETWORKING" \
-              entraClientId="$ADR_ENTRA_CLIENT_ID" entraTenantId="$ADR_ENTRA_TENANT_ID"
+              entraClientId="$ADR_ENTRA_CLIENT_ID" entraTenantId="$ADR_ENTRA_TENANT_ID" entraAllowedClientIds="$ADR_ENTRA_ALLOWED_CLIENT_IDS"
       - name: Provision
         run: azd provision --no-prompt
       - name: Deploy
@@ -185,7 +188,7 @@ jobs:
         run: |
           URL=$(azd env get-value MCP_ENDPOINT); BASE="${URL%/runtime/webhooks/mcp}"
           for _ in $(seq 1 30); do
-            [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/health" || true)" = "200" ] && exit 0
+            [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/api/health" || true)" = "200" ] && exit 0
             sleep 10
           done
           echo "::error::$BASE/api/health did not return 200 within 5 minutes"; exit 1
@@ -203,6 +206,11 @@ jobs:
           [ -n "$KEY" ] || { echo "::error::mcp_extension system key not available after 3 minutes"; exit 1; }
           echo "::add-mask::$KEY"
           ADR_MCP_KEY="$KEY" python3 scripts/smoke-test.py --url "$URL"   # key via environment, not the command line
-      - name: Smoke test skipped (Entra mode)
-        if: env.ADR_AUTH_MODE != 'FunctionKey'
-        run: echo "::notice title=Smoke test skipped::EntraBuiltIn needs a user token; run scripts/smoke-test.py --bearer <token> manually (docs/06-claude-connection.md)."
+      - name: Verify unauthenticated MCP calls are rejected (Entra mode)
+        # The webhook is Anonymous in this mode, so App Service Authentication is the only gate: prove it is on before finishing.
+        if: env.ADR_AUTH_MODE == 'EntraBuiltIn'
+        run: |
+          URL=$(azd env get-value MCP_ENDPOINT)
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' -d '{}' "$URL" || true)
+          [ "$code" = "401" ] || { echo "::error::Unauthenticated POST to the MCP endpoint returned $code, expected 401. Check App Service Authentication (authsettingsV2)."; exit 1; }
+          echo "::notice title=Tool smoke test skipped::EntraBuiltIn needs a user token; run scripts/smoke-test.py --bearer <token> manually (docs/06-claude-connection.md)."

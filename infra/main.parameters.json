@@ -7,6 +7,7 @@
     "authMode": { "value": "${ADR_AUTH_MODE=FunctionKey}" },
     "entraClientId": { "value": "${ADR_ENTRA_CLIENT_ID}" },
     "entraTenantId": { "value": "${ADR_ENTRA_TENANT_ID}" },
+    "entraAllowedClientIds": { "value": "${ADR_ENTRA_ALLOWED_CLIENT_IDS}" },
     "enablePrivateNetworking": { "value": "${ADR_PRIVATE_NETWORKING=false}" },
     "enableDefenderForStorage": { "value": "${ADR_DEFENDER_STORAGE=false}" },
     "deployerPrincipalId": { "value": "${AZURE_PRINCIPAL_ID}" }

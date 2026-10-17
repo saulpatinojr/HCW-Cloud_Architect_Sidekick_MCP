@@ -46,12 +46,12 @@ public sealed class TenantDirectory
     /// "*" names no workspace, so it is skipped.</summary>
     public IEnumerable<(string TenantId, string WorkspaceId)> KnownScopes()
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (string.Equals(_o.Mode, "FunctionKey", StringComparison.OrdinalIgnoreCase) && seen.Add($"{_o.StaticTenantId}|{_o.StaticWorkspaceId}"))
-            yield return (_o.StaticTenantId, _o.StaticWorkspaceId);
-        foreach (var tenantId in _workspaces.Keys.Concat(_enrolled.Values).Distinct(StringComparer.Ordinal))
-            foreach (var ws in WorkspacesFor(tenantId, _o.DefaultWorkspaceId).Where(w => w != "*"))
-                if (seen.Add($"{tenantId}|{ws}")) yield return (tenantId, ws);
+        var binding = string.Equals(_o.Mode, "FunctionKey", StringComparison.OrdinalIgnoreCase)
+            ? new[] { (_o.StaticTenantId, _o.StaticWorkspaceId) }
+            : Array.Empty<(string, string)>();
+        var configured = _workspaces.Keys.Concat(_enrolled.Values).Distinct(StringComparer.Ordinal)
+            .SelectMany(tenantId => WorkspacesFor(tenantId, _o.DefaultWorkspaceId).Where(ws => ws != "*").Select(ws => (tenantId, ws)));
+        return binding.Concat(configured).Distinct();
     }
 
     /// <summary>Canonical form of an Entra tenant ID (lower-case hyphenated GUID); other values are only trimmed.</summary>

@@ -32,10 +32,9 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
         }
 
         void Workspaces(IEnumerable<string> workspaces, string entry)
-        {
-            foreach (var ws in workspaces.Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w.Trim()))
-                if (ws != "*" && !Identifiers.IsValid(ws)) failures.Add($"{entry}: workspace '{ws}' must be '*' or 1-64 letters, digits, '-', '_' or '.'.");
-        }
+            => failures.AddRange(workspaces.Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w.Trim())
+                .Where(ws => ws != "*" && !Identifiers.IsValid(ws))
+                .Select(ws => $"{entry}: workspace '{ws}' must be '*' or 1-64 letters, digits, '-', '_' or '.'."));
 
         foreach (var (tid, mapped) in options.TenantMap) Enroll(tid, mapped, $"Auth:TenantMap key '{tid}'", $"Auth:TenantMap:{tid}");
         for (var i = 0; i < options.Tenants.Count; i++)

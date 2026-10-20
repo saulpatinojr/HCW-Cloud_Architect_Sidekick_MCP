@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows Keep
 
 ### Changed
 - Deploy is explicit opt-in: it runs only from `main` when the repository variable `ADR_DEPLOY_ENABLED` is `true`, with a preflight check for the Azure variables; otherwise pushes to `main` emit a `Deploy skipped` notice. The manual-dispatch environment is a fixed choice (no free-text typos creating unprotected environments). Deploy has per-environment concurrency (no cancel-in-progress); both jobs have timeouts.
+- A push to `main` that changes only documentation, tests or repository tooling no longer queues a deploy waiting for approval: an unanswered approval held the `adr-dev` concurrency group, so every later deploy queued behind it. Any other path, a change to `ci-cd.yml`, an unknown base commit and a manual dispatch still deploy. The deploy job runs on `ubuntu-24.04` instead of `ubuntu-latest`, so the move to Ubuntu 26 reaches the build job first.
 - Test results (TRX + coverage) are uploaded as the `test-results` artifact; `dorny/test-reporter` was removed because it needs `checks: write`, which fork pull requests never get.
 - Removed the stale DocGen copy from the unit-test assembly (`tests/AdrMcp.UnitTests/tools/`); `tools/AdrMcp.DocGen` is the only generator.
 - Consolidated the duplicate root `adr/` folder into `docs/adr/`, the only ADR location.

@@ -18,7 +18,7 @@ resource account 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
     consistencyPolicy: { defaultConsistencyLevel: consistency }
     locations: [ { locationName: location, failoverPriority: 0, isZoneRedundant: false } ]
     // Explicit to match what Azure sets on the account. Omitted, the template implies false, so what-if shows a change
-    // and a full re-provision would turn it off. No effect with one region; it applies once a second region is added.
+    // and a full re-provision would turn it off. No runtime effect: a serverless account runs in one region and can't add more.
     enableAutomaticFailover: true
     capabilities: [ { name: 'EnableServerless' } ]
     disableLocalAuth: true // Entra ID / managed identity only

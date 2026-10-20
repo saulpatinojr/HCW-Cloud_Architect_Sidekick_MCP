@@ -9,6 +9,10 @@ TestResults/
 .idea/
 *.swp
 
+# VS Code: tasks, launch and extension recommendations are shared; settings stay local
+# (the Azure Functions extension writes a right-click deploy target there that bypasses the CI/CD approval gate)
+.vscode/settings.json
+
 # Azure Functions local settings (contains secrets/connection strings) - NEVER commit
 local.settings.json
 **/local.settings.json

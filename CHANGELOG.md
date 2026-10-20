@@ -1,8 +1,10 @@
 # Changelog
 
-All notable changes to this project are documented here. The format follows Keep a Changelog and the project uses Semantic Versioning.
+All notable changes to this project are documented here. The format follows Keep a Changelog and the project uses Semantic Versioning. Versions below 1.0.0 are pre-production: any release may change behaviour or configuration, and the upgrade steps are listed with each release.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-20
 
 ### Added
 - Agent pack for Claude Code (`.claude/agents/`) and GitHub Copilot (`.github/agents/`).
@@ -12,6 +14,7 @@ All notable changes to this project are documented here. The format follows Keep
 - `scripts/setup-adr-deploy.ps1`: one re-runnable step that creates the deploy identity (OIDC federated credential for the subject GitHub reports for the repository, immutable `owner@id/repo@id` subjects included; Contributor plus Role Based Access Control Administrator limited to the roles the template assigns), the protected `adr-dev` environment and the repository variables. Device-code sign-in; no secrets. Safe to re-run: existing repository variables pin the tenant, subscription, region and deploy app (it signs in to that tenant and never creates a second app), auth mode and networking choices are kept, an unconstrained Role Based Access Control Administrator assignment is removed, and every step is read back and verified (`PASS`).
 
 ### Changed
+- Versioning: the project is pre-production, so the initial release is relabelled `0.1.0` (it was recorded as `1.0.0` but never tagged). The MCP server reports `serverVersion` `0.2.0` (`host.json`).
 - Deploy is explicit opt-in: it runs only from `main` when the repository variable `ADR_DEPLOY_ENABLED` is `true`, with a preflight check for the Azure variables; otherwise pushes to `main` emit a `Deploy skipped` notice. The manual-dispatch environment is a fixed choice (no free-text typos creating unprotected environments). Deploy has per-environment concurrency (no cancel-in-progress); both jobs have timeouts.
 - A push to `main` that changes only documentation, tests or repository tooling no longer queues a deploy waiting for approval: an unanswered approval held the `adr-dev` concurrency group, so every later deploy queued behind it. Any other path, a change to `ci-cd.yml`, an unknown base commit and a manual dispatch still deploy. The deploy job runs on `ubuntu-24.04` instead of `ubuntu-latest`, so the move to Ubuntu 26 reaches the build job first.
 - Test results (TRX + coverage) are uploaded as the `test-results` artifact; `dorny/test-reporter` was removed because it needs `checks: write`, which fork pull requests never get.
@@ -52,7 +55,7 @@ All notable changes to this project are documented here. The format follows Keep
 - Manually dispatched runs (the deploy path) scan the full git history with gitleaks and failed on 8 false positives in the initial commit (public role IDs, the redactor's replacement text, a sample idempotency key, and the secret-scanner test's deliberate fakes). They are baselined in `.gitleaksignore` by exact fingerprint, and the file is CODEOWNERS-protected.
 - The smoke test reads the function key from `ADR_MCP_KEY` and the Entra token from `ADR_MCP_BEARER`, so neither appears on the command line; Azurite in CI binds to `127.0.0.1` and readiness waits for an HTTP answer.
 
-## [1.0.0] - 2026-10-07
+## [0.1.0] - 2026-10-07
 
 ### Added
 - ADR Intelligence MCP Server on Azure Functions Flex Consumption (.NET 8 isolated, MCP extension 1.6.0) with 27 implemented tools.
@@ -61,3 +64,7 @@ All notable changes to this project are documented here. The format follows Keep
 - Direct-to-Blob upload flow with quarantine, hashing, MIME sniffing and deterministic content safety.
 - Technology detectors (8), drift detectors (3), contradiction rules (7), safety-review rules (12), decision memory, audit.
 - Bicep infrastructure, azd configuration, OIDC-based CI/CD, MCP protocol smoke test, documentation set A–L.
+
+[Unreleased]: https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/releases/tag/v0.1.0

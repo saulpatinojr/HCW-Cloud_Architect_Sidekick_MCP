@@ -19,7 +19,7 @@
     "mcp": {
       "instructions": "ADR Intelligence server. Human-owned ADR fields (title, context, decision, rationale, alternatives, consequences, status, approvers, approval result, notes, supersession) are never changed by analysis: use adr_propose_change and let a human approve with adr_approve_change. Analysis results (technologies, drift, contradictions, safety findings) are advisory and carry confidence and provenance. Upload files with file_upload_request + a direct PUT, then file_register_upload. Long-running work returns a job id: poll analysis_job_get.",
       "serverName": "adr-intelligence",
-      "serverVersion": "1.0.0",
+      "serverVersion": "0.2.0",
       "encryptClientState": true,
       "system": {
         "webhookAuthorizationLevel": "System"

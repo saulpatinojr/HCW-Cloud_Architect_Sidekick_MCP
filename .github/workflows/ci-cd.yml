@@ -29,9 +29,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: read    # gitleaks lists the pull request's commits
+    outputs:
+      deploy: ${{ steps.changes.outputs.deploy }}   # 'false' when a push to main changes nothing that ships to Azure
     steps:
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }   # full history for secret scanning
+        with: { fetch-depth: 0 }   # full history for secret scanning (and the deploy-relevance diff below)
 
       # First, before any pull-request code runs (it could otherwise plant a .gitleaksignore), and independent of test results.
       - name: Secret scan (gitleaks)
@@ -113,6 +115,32 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: { name: api, path: publish/api, retention-days: 7 }
 
+      - name: Does this push change what is deployed?
+        # A push that changes only docs, tests or repository tooling would still queue a deploy waiting for approval,
+        # and an unanswered approval holds the environment's concurrency group, so every later deploy queues behind it.
+        id: changes
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ADR_DEPLOY_ENABLED == 'true'
+        env:
+          BEFORE: ${{ github.event.before }}
+          # Paths that never reach Azure. Every other path deploys, including paths added later (fail safe), and so does
+          # a change to this workflow, so the deploy job's own steps are exercised.
+          NOT_DEPLOYED: '^(docs|tests|samples|tools|\.vscode|\.claude|\.github)/|\.md$|^(LICENSE|\.gitignore|\.gitattributes|\.mcp\.json)$'
+        run: |
+          deploy=true
+          # Without the previous main commit (first push, force push) the change set is unknown: deploy.
+          if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+            deployable=$(grep -Ev "$NOT_DEPLOYED" <<< "$changed" | grep . || true)
+            if grep -qxF '.github/workflows/ci-cd.yml' <<< "$changed"; then deployable="$deployable .github/workflows/ci-cd.yml"; fi
+            [ -n "$deployable" ] || deploy=false
+          fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          if [ "$deploy" = false ]; then
+            msg="Only documentation, tests or repository tooling changed, so nothing new ships and no approval is requested. Run the workflow manually to deploy anyway."
+            echo "::notice title=Deploy skipped::$msg"
+            echo "**Deploy skipped:** $msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Explain skipped deploy
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ADR_DEPLOY_ENABLED != 'true'
         run: |
@@ -124,8 +152,9 @@ jobs:
     name: Provision + deploy (OIDC)
     needs: build-test                      # blocked unless every required check above passed
     # Explicit opt-in (repository variable) so forks and unconfigured clones never deploy, and only main is deployable.
-    if: vars.ADR_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    # A push deploys only when it changes something that ships (build-test's `deploy` output); a manual run always deploys.
+    if: vars.ADR_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.build-test.outputs.deploy == 'true'))
+    runs-on: ubuntu-24.04                  # pinned: the ubuntu-latest move to Ubuntu 26 reaches build-test first, never a deploy mid-flight
     timeout-minutes: 60
     permissions:
       contents: read

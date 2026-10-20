@@ -22,7 +22,7 @@ All notable changes to this project are documented here. The format follows Keep
 - CodeQL drops results located in source-generated code (`obj/`, `*.g.cs`, e.g. `RegexGenerator.g.cs` from `[GeneratedRegex]`) before uploading the SARIF, under the explicit category `/language:csharp`. All queries still run on handwritten code. The switch from the default category left the old configuration's alerts open on `main` until that configuration was deleted.
 - CodeQL excludes `cs/linq/missed-where` and `cs/linq/missed-select` (`.github/codeql/codeql-config.yml`): style suggestions to rewrite a `foreach` as LINQ, not defects. Every security query and every other quality query still runs.
 - `samples/evidence/package.json` (detector demo fixture, never installed) moves `vitest` to `^5.0.5`, which closes the critical Dependabot alert for Vitest UI file read on Windows (< 3.2.6).
-- Runtime moves from .NET 8 to .NET 10 (LTS) ahead of .NET 8 end of support on 2026-11-10 (ADR-0007, Proposed): `net10.0`, SDK 10.0.1xx, and the Flex Consumption runtime version is now the `functionsDotnetVersion` Bicep parameter (default `10.0`).
+- Runtime moves from .NET 8 to .NET 10 (LTS) ahead of .NET 8 end of support on 2026-11-10 (ADR-0007, Accepted): `net10.0`, SDK 10.0.1xx, and the Flex Consumption runtime version is now the `functionsDotnetVersion` Bicep parameter (default `10.0`).
 - Safety rule SR-EOL-001 is date-aware for .NET: it compares official end-of-support dates (.NET Core 2.1 to .NET 10) with the review date, so it flags .NET 8 and 9 as end of life from 2026-11-11. It also raises a Medium warning in the 90 days before end of support, and now matches `dotnet 6`, `net8.0` and `netcoreapp3.1`.
 
 ### Fixed

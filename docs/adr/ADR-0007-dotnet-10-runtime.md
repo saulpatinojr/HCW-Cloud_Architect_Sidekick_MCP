@@ -1,6 +1,6 @@
 # ADR-0007: Move the runtime from .NET 8 to .NET 10 (LTS) before .NET 8 end of support
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-16
 - Owners: Platform architecture
 - Tags: runtime, dotnet, azure-functions, lifecycle
@@ -26,6 +26,13 @@ Gates before this ADR can be Accepted:
 - `az functionapp list-flexconsumption-runtimes --location <region> --runtime dotnet-isolated` lists `10.0` for every target region.
 - On .NET 10, `func start` followed by `python3 scripts/smoke-test.py --url http://localhost:7071/runtime/webhooks/mcp --write` passes.
 - CI is green (build, tests, NuGet Audit, Bicep lint, contract docs).
+
+## Gate evidence (2026-10-20)
+- Flex runtimes (**Observed**): `az functionapp list-flexconsumption-runtimes --location southcentralus --runtime dotnet-isolated` lists `10` (end of life 2028-11-10), `9` and `8` (both 2026-11-10). `southcentralus` is the only target region (adr-dev).
+- Local runtime (**Observed**): on .NET 10.0.12 (SDK 10.0.402, Core Tools 4.15.2, Azurite 3.37.0), `func start` followed by `python scripts/smoke-test.py --url http://localhost:7071/runtime/webhooks/mcp --write` passed: initialize, `tools/list` (27 tools), `adr_list`, `technology_detect`, `adr_safety_review` and the write round-trip.
+- CI (**Observed**): green on `main` at `94a1efb` (run 39026145689): build, unit and Azurite integration tests, NuGet Audit, Bicep build and lint, contract docs.
+- Azure (**Observed**): the same run deployed `94a1efb` to adr-dev on Flex Consumption with `functionsDotnetVersion` `10.0`; the health probe and the smoke test passed. This also settles "Not verified (b)" above for the deployed host.
+- Dates (**Verified**, Microsoft Learn, [Azure Functions runtime versions](https://learn.microsoft.com/azure/azure-functions/functions-versions#languages)): .NET 8 support on Functions v4 ends 2026-11-10; .NET 10 is GA with expected end of support 2028-11-14.
 
 ## Rationale
 - .NET 10 is the LTS release that follows .NET 8; a runtime past end of support receives no security fixes.

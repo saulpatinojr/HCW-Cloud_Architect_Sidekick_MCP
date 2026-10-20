@@ -20,6 +20,11 @@ resource account 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
     // Explicit to match what Azure sets on the account. Omitted, the template implies false, so what-if shows a change
     // and a full re-provision would turn it off. No runtime effect: a serverless account runs in one region and can't add more.
     enableAutomaticFailover: true
+    // Values Azure assigns to the account, pinned so what-if shows no change (verified with a what-if on 2026-10-20). The
+    // only account line left in the plan is the read-only sqlEndpoint, which the template cannot set.
+    defaultIdentity: 'FirstPartyIdentity'
+    analyticalStorageConfiguration: { schemaType: 'WellDefined' }
+    enablePerRegionPerPartitionAutoscale: false
     capabilities: [ { name: 'EnableServerless' } ]
     disableLocalAuth: true // Entra ID / managed identity only
     minimalTlsVersion: 'Tls12'

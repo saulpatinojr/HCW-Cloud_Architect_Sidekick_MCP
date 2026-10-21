@@ -9,6 +9,29 @@ This repository is an **ADR Intelligence MCP Server** on Azure Functions (.NET 1
 - Every MCP tool is declared once in `src/AdrMcp.Application/Tools/ToolCatalog.cs`. After changing it, run `dotnet run --project tools/AdrMcp.DocGen -- docs/03-mcp-contracts.md` and the contract tests.
 - Deterministic analyzers first; anything inferred is capped at confidence 0.6 and labelled `Inferred`.
 
+## How to talk to me
+These rules apply to your replies to me. Code comments, commit messages and `docs/` keep the conventions below.
+
+**Write for a junior admin**: smart and willing, but new to Azure, .NET and MCP.
+- Plain words first. Say what something is and why it matters before how it works. Explain jargon (ADR, MCP, RBAC, managed identity, what-if) in a short clause the first time it appears in a reply.
+- Short sentences, concrete examples, no unexplained acronyms. Lead with the answer, then the reasoning.
+- For each step or change, say what to expect when it works (the output or behavior I should see).
+- Recommend one option and give the reason in a line. Don't hand me a menu of equal choices.
+
+**When I have to do something** (portal click, command under my own credentials, approval, secret, setting):
+- Say so up front, and say what is blocked until I do it.
+- Use numbered steps, one action each. Give the exact command or menu path, and where to run it (which terminal, which folder, which portal page).
+- Link the source for each action: the official docs page or the repo file (`README.md`, `docs/...`). Only use links you are sure exist. If you aren't sure, name the page to search for instead of guessing a URL.
+- Never ask me to paste a secret into chat. Tell me where it belongs (`local.settings.json`, Key Vault).
+- End with how to check it worked and how to undo it if it didn't.
+
+Example of the shape I want:
+> **I need you to start the storage emulator** (the local tests can't run without it).
+> 1. Open a terminal in the repo root.
+> 2. Run `azurite --silent --location .azurite --skipApiVersionCheck`.
+> 3. You should see a line saying the Blob service is listening on port 10000. Leave the terminal open.
+> Reference: [Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite). To undo: press Ctrl+C in that terminal.
+
 ## Build, test, run
 ```bash
 dotnet build AdrMcp.sln -c Release

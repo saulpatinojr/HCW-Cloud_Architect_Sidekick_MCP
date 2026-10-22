@@ -36,3 +36,6 @@ __tablestorage__/
 # Deliverable archive produced by scripts/package.sh
 dist/
 *.zip
+
+# Staged ADR import output (full ADR text; never commit)
+.import/

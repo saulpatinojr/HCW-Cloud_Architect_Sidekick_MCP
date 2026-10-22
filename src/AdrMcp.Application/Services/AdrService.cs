@@ -19,6 +19,12 @@ public sealed record CreateAdrCommand(
 
 public sealed record AdrSearchHit(Adr Adr, double Score, IReadOnlyList<string> MatchedTerms);
 
+/// <summary>One existing decision to load with <see cref="AdrService.ImportAsync"/>. Id is kept as given so references to it stay valid.</summary>
+public sealed record ImportAdrCommand(string Id, string? Markdown, HumanFieldPatch? Fields, DateOnly? DecidedOn, string? SourcePath);
+
+/// <summary>Outcome is created, would-create (dry run), unchanged, conflict or invalid.</summary>
+public sealed record ImportAdrResult(string Id, string Outcome, string? Message);
+
 /// <summary>
 /// Core ADR use-cases. Human-owned content is only ever written through <see cref="ApplyHumanChangeAsync"/>,
 /// which requires a human provenance and a permission check. Analyzers use <see cref="ApplyObservedUpdateAsync"/>.
@@ -166,6 +172,69 @@ public sealed class AdrService
         var prov = Provenance.Human(ctx.PrincipalId, _clock.UtcNow, ctx.CorrelationId, "adr_archive");
         var notes = string.IsNullOrWhiteSpace(adr.Human.HumanNotes) ? $"Archived: {reason}" : $"{adr.Human.HumanNotes}\n\nArchived: {reason}";
         return await ApplyHumanChangeAsync(adr, adr.Human with { Status = AdrStatus.Archived, HumanNotes = notes }, prov, reason, ct);
+    }
+
+    /// <summary>
+    /// Loads an existing decision in the lifecycle status it already has (adr_create only allows Draft or Proposed).
+    /// This is a human action by an Approver: the content goes in verbatim with human provenance and the original Markdown is kept
+    /// as the source of record. It never overwrites: an id that already exists is reported as unchanged or as a conflict.
+    /// </summary>
+    public async Task<ImportAdrResult> ImportAsync(TenantContext ctx, string workspaceId, ImportAdrCommand cmd, bool dryRun, CancellationToken ct)
+    {
+        _authz.Require(ctx, Permission.AdrImport);
+        _authz.Require(ctx, Permission.AdrCreate);
+        if (!Ids.IsSafeId(cmd.Id)) return new(cmd.Id, "invalid", "id has invalid characters or is longer than 128.");
+
+        HumanOwnedContent content;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(cmd.Markdown))
+            {
+                if (cmd.Markdown.Length > _options.MaxMarkdownLength) return new(cmd.Id, "invalid", $"markdown exceeds {_options.MaxMarkdownLength} characters.");
+                content = AdrMarkdown.Parse(cmd.Markdown);
+                if (cmd.Fields is not null) content = cmd.Fields.ApplyTo(content);
+            }
+            else if (cmd.Fields is { Title: not null }) content = cmd.Fields.ApplyTo(new HumanOwnedContent { Title = cmd.Fields.Title });
+            else return new(cmd.Id, "invalid", "markdown, or fields with a title, is required.");
+            ValidateContent(content);
+        }
+        catch (ValidationException ex) { return new(cmd.Id, "invalid", ex.Message); }
+
+        var now = _clock.UtcNow;
+        var decided = cmd.DecidedOn is { } day ? new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : now;
+        if (decided > now) return new(cmd.Id, "invalid", "decidedOn is in the future.");
+        if (content.Status is AdrStatus.Accepted or AdrStatus.Deprecated or AdrStatus.Superseded) content = content with { AcceptedAt = decided };
+        var hash = HashHuman(content);
+
+        var existing = await _adrs.GetAsync(ctx.TenantId, workspaceId, cmd.Id, ct);
+        if (existing is not null)
+            return !existing.IsDeleted && existing.ContentHash == hash
+                ? new(cmd.Id, "unchanged", null)
+                : new(cmd.Id, "conflict", "An ADR with this id already exists with different content. Imports never overwrite; use adr_update or adr_propose_change.");
+        if (dryRun) return new(cmd.Id, "would-create", null);
+
+        var number = await _adrs.NextAdrNumberAsync(ctx.TenantId, workspaceId, ct);
+        var provenance = Provenance.Human(ctx.PrincipalId, now, ctx.CorrelationId, "adr_import");
+        var adr = new Adr
+        {
+            Id = cmd.Id,
+            TenantId = ctx.TenantId,
+            WorkspaceId = workspaceId,
+            AdrNumber = number,
+            Human = content,
+            CreatedAt = decided,
+            UpdatedAt = now,
+            Provenance = provenance,
+            ContentHash = hash
+        };
+        var sourcePath = $"{ctx.TenantId}/{workspaceId}/{cmd.Id}/h1.md";
+        await _blobs.WriteTextAsync(EvidenceContainer.AdrSource, sourcePath, cmd.Markdown ?? AdrMarkdown.Render(adr), "text/markdown",
+            new Dictionary<string, string> { ["adrId"] = cmd.Id, ["humanRevision"] = "1", ["contentHash"] = hash, ["origin"] = "adr_import" }, ct);
+        adr.SourceMarkdownBlobPath = sourcePath;
+        var created = await _adrs.CreateAsync(adr, ct);
+        await _history.AppendAsync(Snapshot(created, "imported", provenance, $"Imported{(cmd.SourcePath is null ? "" : " from " + cmd.SourcePath)} as {content.Status}"), ct);
+        _logger.LogInformation("ADR {AdrId} imported into {Workspace} as {Status}", created.Id, workspaceId, content.Status);
+        return new(cmd.Id, "created", null);
     }
 
     public Task<IReadOnlyList<AdrVersionSnapshot>> HistoryAsync(TenantContext ctx, string workspaceId, string adrId, int take, CancellationToken ct)

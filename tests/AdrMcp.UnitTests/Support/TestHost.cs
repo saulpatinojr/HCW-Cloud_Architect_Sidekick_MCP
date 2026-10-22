@@ -82,6 +82,7 @@ public sealed class TestHost
         "adr_archive" => Pipeline.ExecuteAsync<AdrArchiveRequest>(tool, args, headers, null, Handlers.AdrArchive, default),
         "adr_history" => Pipeline.ExecuteAsync<AdrHistoryRequest>(tool, args, headers, null, Handlers.AdrHistory, default),
         "adr_export" => Pipeline.ExecuteAsync<AdrExportRequest>(tool, args, headers, null, Handlers.AdrExport, default),
+        "adr_import" => Pipeline.ExecuteAsync<AdrImportRequest>(tool, args, headers, null, Handlers.AdrImport, default),
         "file_upload_request" => Pipeline.ExecuteAsync<FileUploadRequestRequest>(tool, args, headers, null, Handlers.FileUploadRequest, default),
         "file_register_upload" => Pipeline.ExecuteAsync<FileRegisterUploadRequest>(tool, args, headers, null, Handlers.FileRegisterUpload, default),
         "evidence_attach" => Pipeline.ExecuteAsync<EvidenceAttachRequest>(tool, args, headers, null, Handlers.EvidenceAttach, default),

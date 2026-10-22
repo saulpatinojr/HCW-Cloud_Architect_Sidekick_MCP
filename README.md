@@ -115,11 +115,13 @@ Details, OAuth notes and upload guidance: [Connecting Claude](docs/06-claude-con
 
 | Group | Tools |
 |---|---|
-| ADR management | `adr_create` `adr_get` `adr_list` `adr_search` `adr_update` `adr_propose_change` `adr_approve_change` `adr_reject_change` `adr_supersede` `adr_archive` `adr_history` `adr_export` |
+| ADR management | `adr_create` `adr_get` `adr_list` `adr_search` `adr_update` `adr_propose_change` `adr_approve_change` `adr_reject_change` `adr_supersede` `adr_archive` `adr_history` `adr_export` `adr_import` |
 | Evidence | `file_upload_request` `file_register_upload` `evidence_attach` `evidence_list` `evidence_remove` |
 | Analysis | `technology_detect` `technology_refresh` `adr_detect_drift` `adr_check_contradictions` `adr_safety_review` `finding_review` |
 | Jobs & memory | `analysis_job_get` `analysis_job_cancel` `analysis_job_results` `decision_memory_search` |
 | Specified for later phases | `file_import_from_repository` `adr_find_related_code` `adr_impact_analysis` `architecture_fitness_check` `dependency_map_generate` `c4_model_generate` `decision_lineage_get` `architecture_rule_create` `architecture_rule_validate` `governance_check` `deployment_readiness_check` |
+
+Bringing in decisions you already have (a wiki or a folder of Markdown files)? See [Importing existing ADRs](docs/10-legacy-adr-import.md): a read-only `scan` with a data-quality report, then `adr_import`.
 
 Every tool advertises an exact JSON Schema and returns a compact envelope `{ ok, data, error, meta }`. Full contracts with examples are generated from code: [MCP tool contracts](docs/03-mcp-contracts.md).
 

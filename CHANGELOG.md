@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows Keep
 
 ## [Unreleased]
 
+### Added
+- `adr_import` tool (Approver): loads existing decisions in their current lifecycle status, keeping their ids and original decision dates. Never overwrites (same content is `unchanged`, different content is `conflict`), supports `dryRun`, 25 records per call, original Markdown kept as the source of record, provenance `adr_import`. New permission `AdrImport` (Approver, Admin).
+- `tools/AdrMcp.Import`: `scan` reads a folder of ADR Markdown files and writes a staging folder with a data-quality report, `overrides.json` for human decisions and `overrides.suggested.json`; `load` sends the staged records through `adr_import`. See [Importing existing ADRs](docs/10-legacy-adr-import.md).
+- ADR Markdown parser reads the Tyree and Akerman layout and the older HCW layouts: leading metadata table (ID, Status, Author, Reviewed By, Date), numbered headings, options tables, a `## Status` section, "Superseded by" status text, assumptions and constraints (kept in the context).
+- `adr_get` provenance now includes `source` (for example `adr_import`).
+
+### Changed
+- Markdown parsing no longer treats lines inside code fences as headings or metadata.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added

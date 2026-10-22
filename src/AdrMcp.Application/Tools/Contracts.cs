@@ -23,6 +23,8 @@ public sealed record AdrSupersedeRequest(string? WorkspaceId, string OldAdrId, s
 public sealed record AdrArchiveRequest(string? WorkspaceId, string AdrId, string Reason, string? IdempotencyKey) : IMutatingRequest;
 public sealed record AdrHistoryRequest(string? WorkspaceId, string AdrId, int? Take) : IToolRequest;
 public sealed record AdrExportRequest(string? WorkspaceId, string AdrId, string? Format) : IToolRequest;
+public sealed record AdrImportRecordDto(string Id, string? Markdown, AdrFieldsDto? Fields, string? DecidedOn, string? SourcePath);
+public sealed record AdrImportRequest(string? WorkspaceId, IReadOnlyList<AdrImportRecordDto>? Records, bool? DryRun, string? IdempotencyKey) : IMutatingRequest;
 
 // ---------- Files / evidence ----------
 public sealed record FileUploadRequestRequest(string? WorkspaceId, string FileName, string MediaType, long ExpectedSizeBytes, string? Sha256, string? AdrId, string? Note, string? IdempotencyKey) : IMutatingRequest;
@@ -69,5 +71,5 @@ public sealed record AdrDetailDto(
         a.Human.Owners, a.Human.Approvers, a.Human.ApprovalResult, a.Human.HumanNotes, a.Human.Claims, a.Human.Supersedes, a.Human.SupersededBy, a.CreatedAt, a.Human.AcceptedAt, a.ContentHash,
         a.Observed.DetectedTechnologies.Where(t => t.Status != TechnologyStatus.Removed).Take(maxTechnologies).Select(TechnologyDto.From).ToList(), a.Observed.DetectedTechnologies.Count,
         a.Observed.Evidence.Count, a.Observed.Evidence.Select(e => e.EvidenceId).ToList(), a.Observed.SafetyFindingIds.Count, a.Observed.LastAnalyzedAt, markdown,
-        new JsonObject { ["actor"] = a.Provenance.Actor, ["actorType"] = a.Provenance.ActorType, ["timestamp"] = a.Provenance.Timestamp.ToString("O"), ["correlationId"] = a.Provenance.CorrelationId });
+        new JsonObject { ["actor"] = a.Provenance.Actor, ["actorType"] = a.Provenance.ActorType, ["source"] = a.Provenance.Source, ["timestamp"] = a.Provenance.Timestamp.ToString("O"), ["correlationId"] = a.Provenance.CorrelationId });
 }

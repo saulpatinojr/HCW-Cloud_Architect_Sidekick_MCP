@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AdrMcp.Import</RootNamespace>
+    <Description>Scans a folder of existing ADR Markdown files into a reviewed staging set and loads it through the adr_import MCP tool.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AdrMcp.Application\AdrMcp.Application.csproj" />
+    <ProjectReference Include="..\..\src\AdrMcp.Analysis\AdrMcp.Analysis.csproj" />
+  </ItemGroup>
+</Project>

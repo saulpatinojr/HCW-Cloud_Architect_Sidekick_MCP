@@ -92,6 +92,21 @@ public static class ToolCatalog
             Envelope(Obj(Props(("versions", Arr(Obj(Props(("id", Str("")), ("humanRevision", Int("")), ("observedRevision", Int("")), ("changeKind", Str("")), ("capturedAt", Str("")), ("actor", Str("")), ("actorType", Str("")), ("contentHash", Str("")), ("summary", Str("")))), "Snapshots"))))),
             With(ErrorCodes.AdrNotFound)),
 
+        new("adr_import", "Load existing decisions (up to 25 per call) in the lifecycle status they already have, keeping their ids and original decision dates. Approver role. Human-owned content is stored verbatim with the original Markdown as source of record. Never overwrites: an existing id is reported as unchanged or conflict. Use dryRun to validate first.",
+            Permission.AdrImport, true, IdempotencyMode.Key, ToolPhase.Extended, true,
+            Obj(Props(WorkspaceId,
+                ("records", Arr(Obj(Props(
+                    ("id", Str("Id to keep, e.g. ADR-204001.", 128, "^[A-Za-z0-9._:-]+$")),
+                    ("markdown", Str("Original ADR Markdown (<= 200,000 chars).", 200_000)),
+                    ("fields", FieldsSchema("Structured fields applied over the parsed Markdown (status, tags, notes, supersession).")),
+                    ("decidedOn", Str("Original decision date, yyyy-MM-dd. Becomes the created date.", 10, "^\\d{4}-\\d{2}-\\d{2}$")),
+                    ("sourcePath", Str("Where the document came from; recorded in the history.", 500))), "id"), "Decisions to load (1-25)", 25)),
+                ("dryRun", Bool("Validate and report what would happen without writing.", false)),
+                IdempotencyKey), "records"),
+            Envelope(Obj(Props(("dryRun", Bool("")), ("counts", Any("Number of records per outcome.")),
+                ("results", Arr(Obj(Props(("id", Str("")), ("outcome", Str("created, would-create, unchanged, conflict or invalid")), ("message", Str("")))), "One result per record"))))),
+            With(ErrorCodes.PayloadTooLarge)),
+
         new("adr_export", "Export an ADR as Markdown or JSON.",
             Permission.AdrRead, false, IdempotencyMode.ReadOnly, ToolPhase.Extended, true,
             Obj(Props(WorkspaceId, AdrId, ("format", Str("markdown (default) or json.", enumValues: new[] { "markdown", "json" }))), "adrId"),

@@ -5,7 +5,9 @@ public enum Role { Reader, Author, Approver, Admin }
 public enum Permission
 {
     AdrRead, AdrCreate, AdrEdit, AdrPropose, AdrApproveChange, AdrTransitionStatus, AdrSupersede, AdrArchive,
-    EvidenceUpload, EvidenceRemove, AnalysisRun, FindingReview, RuleManage, JobRead, JobCancel, MemoryRead
+    EvidenceUpload, EvidenceRemove, AnalysisRun, FindingReview, RuleManage, JobRead, JobCancel, MemoryRead,
+    /// <summary>Bulk-load existing decisions in any lifecycle status (adr_import). Approver and Admin only.</summary>
+    AdrImport
 }
 
 /// <summary>The authenticated caller, resolved server-side. Never populated from tool arguments.</summary>
@@ -28,7 +30,7 @@ public static class RolePermissions
 {
     private static readonly Permission[] ReaderPerms = { Permission.AdrRead, Permission.JobRead, Permission.MemoryRead };
     private static readonly Permission[] AuthorPerms = ReaderPerms.Concat(new[] { Permission.AdrCreate, Permission.AdrEdit, Permission.AdrPropose, Permission.EvidenceUpload, Permission.AnalysisRun, Permission.JobCancel }).ToArray();
-    private static readonly Permission[] ApproverPerms = AuthorPerms.Concat(new[] { Permission.AdrApproveChange, Permission.AdrTransitionStatus, Permission.AdrSupersede, Permission.AdrArchive, Permission.FindingReview, Permission.EvidenceRemove }).ToArray();
+    private static readonly Permission[] ApproverPerms = AuthorPerms.Concat(new[] { Permission.AdrApproveChange, Permission.AdrTransitionStatus, Permission.AdrSupersede, Permission.AdrArchive, Permission.FindingReview, Permission.EvidenceRemove, Permission.AdrImport }).ToArray();
     private static readonly Permission[] AdminPerms = Enum.GetValues<Permission>();
 
     public static bool Has(IReadOnlySet<Role> roles, Permission p)

@@ -42,6 +42,7 @@
 │   ├── postprovision.sh               # azd hook: Key Vault salt secret
 │   └── package.sh                     # zips the deliverable
 ├── tools/AdrMcp.DocGen/               # generates docs/03-mcp-contracts.md from code
+├── tools/AdrMcp.Import/               # scan and load existing ADR Markdown files (docs/10-legacy-adr-import.md)
 ├── src/
 │   ├── AdrMcp.Domain/                 # entities, value objects, lifecycle, errors (no dependencies)
 │   │   ├── Adrs/ (Adr, HumanOwnedContent, ObservedState, AdrStatus + AdrLifecycle, DecisionClaim, DetectedTechnology, LinkedFile)

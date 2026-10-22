@@ -380,7 +380,7 @@ public static partial class LegacyImportPlanner
     {
         var dot = a.Where(kv => b.ContainsKey(kv.Key)).Sum(kv => kv.Value * b[kv.Key]);
         var na = Math.Sqrt(a.Values.Sum(x => x * x)); var nb = Math.Sqrt(b.Values.Sum(x => x * x));
-        return na == 0 || nb == 0 ? 0 : dot / (na * nb);
+        return na < 1e-12 || nb < 1e-12 ? 0 : dot / (na * nb);
     }
 
     private static readonly HashSet<string> Stop = new()

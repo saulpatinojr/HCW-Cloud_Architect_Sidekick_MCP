@@ -67,9 +67,9 @@ static int Scan(Dictionary<string, string> o)
 {
     if (!o.TryGetValue("source", out var source) || !o.TryGetValue("out", out var outDir)) return Usage();
     if (!Directory.Exists(source)) { Console.Error.WriteLine($"Source folder not found: {source}"); return 1; }
-    Directory.CreateDirectory(Path.Combine(outDir, "records"));
+    Directory.CreateDirectory(Path.Join(outDir, "records"));
 
-    var overridesPath = o.TryGetValue("overrides", out var ov) ? ov : Path.Combine(outDir, "overrides.json");
+    var overridesPath = o.TryGetValue("overrides", out var ov) ? ov : Path.Join(outDir, "overrides.json");
     var overrides = File.Exists(overridesPath) ? AppJson.Deserialize<ImportOverrides>(File.ReadAllText(overridesPath)) ?? new ImportOverrides() : new ImportOverrides();
     var today = o.TryGetValue("today", out var t) ? DateOnly.Parse(t) : DateOnly.FromDateTime(DateTime.UtcNow);
     var defaults = new PlanOptions();
@@ -85,16 +85,16 @@ static int Scan(Dictionary<string, string> o)
         .ToList();
     var plan = LegacyImportPlanner.Plan(files, options);
 
-    foreach (var old in Directory.GetFiles(Path.Combine(outDir, "records"), "*.json")) File.Delete(old);
+    foreach (var old in Directory.GetFiles(Path.Join(outDir, "records"), "*.json")) File.Delete(old);
     var extractor = new RegexClaimExtractor();
     var claimCounts = new Dictionary<string, int>();
     foreach (var r in plan.Records)
     {
         var dto = new { id = r.Id, markdown = r.Markdown, fields = r.Fields, decidedOn = r.DecidedOn, sourcePath = r.Source.Path };
-        File.WriteAllText(Path.Combine(outDir, "records", r.Id + ".json"), JsonSerializer.Serialize(dto, new JsonSerializerOptions(AppJson.Options) { WriteIndented = true }));
+        File.WriteAllText(Path.Join(outDir, "records", r.Id + ".json"), JsonSerializer.Serialize(dto, new JsonSerializerOptions(AppJson.Options) { WriteIndented = true }));
         claimCounts[r.Id] = extractor.Extract(Preview(r)).Count;
     }
-    File.WriteAllText(Path.Combine(outDir, "plan.json"), JsonSerializer.Serialize(new
+    File.WriteAllText(Path.Join(outDir, "plan.json"), JsonSerializer.Serialize(new
     {
         scannedAt = today.ToString("yyyy-MM-dd"), blocked = plan.IsBlocked, records = plan.Records.Count,
         issues = plan.Issues, skipped = plan.Skipped,
@@ -104,15 +104,15 @@ static int Scan(Dictionary<string, string> o)
     var suggested = new ImportOverrides();
     foreach (var g in plan.Issues.Where(i => i.Code == "POSSIBLE_DUPLICATE" && i.Related is not null && !i.Acknowledged).GroupBy(i => i.AdrId))
         suggested.Supersedes[g.Key] = g.OrderByDescending(i => i.Score).First().Related!;
-    File.WriteAllText(Path.Combine(outDir, "overrides.suggested.json"), JsonSerializer.Serialize(suggested, new JsonSerializerOptions(AppJson.Options) { WriteIndented = true }));
+    File.WriteAllText(Path.Join(outDir, "overrides.suggested.json"), JsonSerializer.Serialize(suggested, new JsonSerializerOptions(AppJson.Options) { WriteIndented = true }));
     if (!File.Exists(overridesPath))
         File.WriteAllText(overridesPath, JsonSerializer.Serialize(new ImportOverrides(), new JsonSerializerOptions(AppJson.Options) { WriteIndented = true }));
-    File.WriteAllText(Path.Combine(outDir, "report.md"), Report(plan, claimCounts, options, source));
+    File.WriteAllText(Path.Join(outDir, "report.md"), Report(plan, claimCounts, options, source));
 
     var errors = plan.Issues.Count(i => i.Severity == IssueSeverity.Error && !i.Acknowledged);
     var warnings = plan.Issues.Count(i => i.Severity == IssueSeverity.Warning && !i.Acknowledged);
     Console.WriteLine($"Scanned {files.Count} files: {plan.Records.Count} ADRs ready to stage, {plan.Skipped.Count} skipped, {errors} blocking errors, {warnings} warnings.");
-    Console.WriteLine($"Read {Path.Combine(outDir, "report.md")} next. {(plan.IsBlocked ? "Blocked: fix the errors or record a decision in overrides.json, then scan again." : "No blocking errors.")}");
+    Console.WriteLine($"Read {Path.Join(outDir, "report.md")} next. {(plan.IsBlocked ? "Blocked: fix the errors or record a decision in overrides.json, then scan again." : "No blocking errors.")}");
     return plan.IsBlocked ? 2 : 0;
 }
 
@@ -140,7 +140,7 @@ static DateOnly? FirstCommitDate(string dir, string file)
         p.WaitForExit();
         return p.ExitCode == 0 && DateOnly.TryParse(last, out var d) ? d : null;
     }
-    catch { return null; }
+    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException) { return null; }
 }
 
 static string Report(ImportPlan plan, Dictionary<string, int> claims, PlanOptions options, string source)
@@ -267,11 +267,11 @@ static async Task<int> LoadAsync(Dictionary<string, string> o)
 {
     if (!o.TryGetValue("staging", out var staging) || !o.TryGetValue("url", out var url)) return Usage();
     var dryRun = o.ContainsKey("dry-run");
-    var planPath = Path.Combine(staging, "plan.json");
+    var planPath = Path.Join(staging, "plan.json");
     if (!File.Exists(planPath)) { Console.Error.WriteLine("plan.json not found. Run scan first."); return 1; }
     if (JsonNode.Parse(File.ReadAllText(planPath))?["blocked"]?.GetValue<bool>() == true) { Console.Error.WriteLine("The last scan was blocked. Fix the errors and scan again before loading."); return 2; }
 
-    var records = Directory.GetFiles(Path.Combine(staging, "records"), "*.json").OrderBy(f => f, StringComparer.Ordinal)
+    var records = Directory.GetFiles(Path.Join(staging, "records"), "*.json").OrderBy(f => f, StringComparer.Ordinal)
         .Select(f => (Node: JsonNode.Parse(File.ReadAllText(f))!.AsObject(), Size: new FileInfo(f).Length)).ToList();
     if (records.Count == 0) { Console.Error.WriteLine("No staged records."); return 1; }
 
@@ -297,7 +297,7 @@ static async Task<int> LoadAsync(Dictionary<string, string> o)
         if (batch.Count == 0) return;
         var ids = string.Join(",", batch.Select(b => b["id"]!.GetValue<string>()));
         var hash = Hashing.Sha256Hex(ids + string.Join("", batch.Select(b => Hashing.Sha256Hex(b.ToJsonString()))))[..16];
-        var args = new JsonObject { ["records"] = new JsonArray(batch.Select(b => (JsonNode)b.DeepClone()).ToArray()), ["dryRun"] = dryRun, ["idempotencyKey"] = $"import-{hash}-{runId}{(dryRun ? "-dry" : "")}" };
+        var args = new JsonObject { ["records"] = new JsonArray(batch.Select(b => b.DeepClone()).ToArray()), ["dryRun"] = dryRun, ["idempotencyKey"] = $"import-{hash}-{runId}{(dryRun ? "-dry" : "")}" };
         if (o.TryGetValue("workspace", out var ws)) args["workspaceId"] = ws;
         var reply = await Post(http, url, new { jsonrpc = "2.0", id = 10 + ++n, method = "tools/call", @params = new { name = "adr_import", arguments = args } });
         var text = reply.Body?["result"]?["content"]?[0]?["text"]?.GetValue<string>();

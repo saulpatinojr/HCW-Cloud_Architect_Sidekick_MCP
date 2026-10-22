@@ -19,6 +19,7 @@ Every tool returns a `ToolEnvelope`: `{ ok, data?, error?: { code, message, retr
 | `adr_supersede` | Extended | yes | mutating | Key | AdrSupersede |
 | `adr_archive` | Extended | yes | mutating | Key | AdrArchive |
 | `adr_history` | Extended | yes | read-only | ReadOnly | AdrRead |
+| `adr_import` | Extended | yes | mutating | Key | AdrImport |
 | `adr_export` | Extended | yes | read-only | ReadOnly | AdrRead |
 | `file_upload_request` | Mvp | yes | mutating | Key | EvidenceUpload |
 | `file_register_upload` | Mvp | yes | mutating | Natural | EvidenceUpload |
@@ -3799,6 +3800,381 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
             "additionalProperties": false
           },
           "description": "Snapshots"
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable error code."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable message, redacted."
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "Whether retrying may succeed."
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Correlation id for support."
+        },
+        "details": {
+          "description": "Optional structured details."
+        }
+      },
+      "additionalProperties": false
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "correlationId": {
+          "type": "string",
+          "description": "Correlation id."
+        },
+        "tool": {
+          "type": "string",
+          "description": "Tool name."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Server duration."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "description": "Non-fatal warnings.",
+          "maxItems": 50
+        },
+        "idempotentReplay": {
+          "type": "boolean",
+          "description": "True when a stored result was returned for a repeated idempotency key."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "meta"
+  ]
+}
+```
+</details>
+
+## `adr_import`
+
+**Purpose.** Load existing decisions (up to 25 per call) in the lifecycle status they already have, keeping their ids and original decision dates. Approver role. Human-owned content is stored verbatim with the original Markdown as source of record. Never overwrites: an existing id is reported as unchanged or conflict. Use dryRun to validate first.
+
+- Classification: **mutating**, phase **Extended**, implemented
+- Required permission: `AdrImport`
+- Idempotency: Key
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`
+
+<details><summary>Input schema</summary>
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "workspaceId": {
+      "type": "string",
+      "description": "Workspace to operate in. Optional; defaults to the caller\u0027s default workspace. Must be a workspace the caller is authorized for.",
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]\u002B$"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id to keep, e.g. ADR-204001.",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]\u002B$"
+          },
+          "markdown": {
+            "type": "string",
+            "description": "Original ADR Markdown (\u003C= 200,000 chars).",
+            "maxLength": 200000
+          },
+          "fields": {
+            "type": "object",
+            "description": "Structured fields applied over the parsed Markdown (status, tags, notes, supersession).",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Title.",
+                "maxLength": 300
+              },
+              "context": {
+                "type": "string",
+                "description": "Context / problem statement.",
+                "maxLength": 20000
+              },
+              "decision": {
+                "type": "string",
+                "description": "The decision.",
+                "maxLength": 20000
+              },
+              "rationale": {
+                "type": "string",
+                "description": "Why.",
+                "maxLength": 20000
+              },
+              "alternatives": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "description": "Considered alternatives.",
+                "maxItems": 50
+              },
+              "consequences": {
+                "type": "string",
+                "description": "Consequences.",
+                "maxLength": 20000
+              },
+              "status": {
+                "type": "string",
+                "description": "Lifecycle status.",
+                "enum": [
+                  "Draft",
+                  "Proposed",
+                  "UnderReview",
+                  "Accepted",
+                  "Rejected",
+                  "Deprecated",
+                  "Superseded",
+                  "Archived"
+                ]
+              },
+              "owners": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "description": "Owners.",
+                "maxItems": 50
+              },
+              "approvers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "description": "Approvers.",
+                "maxItems": 50
+              },
+              "approvalResult": {
+                "type": "string",
+                "description": "Approval outcome text.",
+                "maxLength": 2000
+              },
+              "humanNotes": {
+                "type": "string",
+                "description": "Free notes.",
+                "maxLength": 20000
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "description": "Tags.",
+                "maxItems": 50
+              },
+              "claims": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "claimId": {
+                      "type": "string",
+                      "description": "Stable id for the claim within the ADR.",
+                      "maxLength": 64
+                    },
+                    "kind": {
+                      "type": "string",
+                      "description": "Claim kind.",
+                      "enum": [
+                        "ProhibitedTechnology",
+                        "RequiredTechnology",
+                        "InfrastructureRequirement",
+                        "DatabaseOwnership",
+                        "IntegrationStyle",
+                        "CloudProvider",
+                        "AuthStrategy",
+                        "DataResidency",
+                        "DataRetention",
+                        "Other"
+                      ]
+                    },
+                    "subject": {
+                      "type": "string",
+                      "description": "What the claim is about, e.g. \u0027Newtonsoft.Json\u0027, \u0027storage accounts\u0027, \u0027OrderService\u0027.",
+                      "maxLength": 200
+                    },
+                    "predicate": {
+                      "type": "string",
+                      "description": "Relation, e.g. \u0027must have\u0027, \u0027owns\u0027.",
+                      "maxLength": 100
+                    },
+                    "object": {
+                      "type": "string",
+                      "description": "Target value, e.g. \u0027private endpoint\u0027, \u0027OrdersDb\u0027, \u0027async\u0027.",
+                      "maxLength": 200
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "system": {
+                          "type": "string",
+                          "description": "System the claim applies to; omit for all.",
+                          "maxLength": 100
+                        },
+                        "boundedContext": {
+                          "type": "string",
+                          "description": "Bounded context; omit for all.",
+                          "maxLength": 100
+                        },
+                        "environment": {
+                          "type": "string",
+                          "description": "Environment such as production; omit for all.",
+                          "maxLength": 50
+                        },
+                        "effectiveFrom": {
+                          "type": "string",
+                          "description": "ISO-8601 date-time."
+                        },
+                        "effectiveTo": {
+                          "type": "string",
+                          "description": "ISO-8601 date-time."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "sourceText": {
+                      "type": "string",
+                      "description": "Sentence in the decision this claim comes from.",
+                      "maxLength": 1000
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "claimId",
+                    "kind",
+                    "subject"
+                  ]
+                },
+                "description": "Structured, testable claims that drive drift and contradiction detection.",
+                "maxItems": 200
+              },
+              "supersedes": {
+                "type": "string",
+                "description": "ADR id this one supersedes.",
+                "maxLength": 128
+              },
+              "supersededBy": {
+                "type": "string",
+                "description": "ADR id that supersedes this one.",
+                "maxLength": 128
+              }
+            }
+          },
+          "decidedOn": {
+            "type": "string",
+            "description": "Original decision date, yyyy-MM-dd. Becomes the created date.",
+            "maxLength": 10,
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "Where the document came from; recorded in the history.",
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "Decisions to load (1-25)",
+      "maxItems": 25
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and report what would happen without writing.",
+      "default": false
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Client-supplied key. Repeating the same call with the same key and payload returns the original result instead of repeating the mutation.",
+      "maxLength": 128
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "records"
+  ]
+}
+```
+</details>
+
+<details><summary>Output schema</summary>
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "True when the call succeeded."
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "dryRun": {
+          "type": "boolean",
+          "description": ""
+        },
+        "counts": {
+          "description": "Number of records per outcome."
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": ""
+              },
+              "outcome": {
+                "type": "string",
+                "description": "created, would-create, unchanged, conflict or invalid"
+              },
+              "message": {
+                "type": "string",
+                "description": ""
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "One result per record"
         }
       },
       "additionalProperties": false

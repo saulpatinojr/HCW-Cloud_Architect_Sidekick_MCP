@@ -56,6 +56,10 @@ public sealed class AdrTools
     public Task<string> History([McpToolTrigger("adr_history", "List version snapshots (human and observed revisions) with provenance and content hashes.")] ToolInvocationContext context, CancellationToken ct)
         => _mcp.RunAsync<AdrHistoryRequest>(context, _h.AdrHistory, ct);
 
+    [Function("adr_import")]
+    public Task<string> Import([McpToolTrigger("adr_import", "Load existing decisions in their current lifecycle status, keeping ids and decision dates (Approver). Never overwrites; supports dryRun.")] ToolInvocationContext context, CancellationToken ct)
+        => _mcp.RunAsync<AdrImportRequest>(context, _h.AdrImport, ct);
+
     [Function("adr_export")]
     public Task<string> Export([McpToolTrigger("adr_export", "Export an ADR as Markdown or JSON.")] ToolInvocationContext context, CancellationToken ct)
         => _mcp.RunAsync<AdrExportRequest>(context, _h.AdrExport, ct);

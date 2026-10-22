@@ -146,6 +146,34 @@ public sealed class ToolHandlers
         return new { format, content, contentHash = adr.ContentHash };
     }
 
+    public async Task<object> AdrImport(ToolCall<AdrImportRequest> call, CancellationToken ct)
+    {
+        var r = call.Request;
+        new Guard().Must(r.Records is { Count: > 0 }, "records is required.").MaxItems(r.Records, 25, "records").Throw();
+        var dryRun = r.DryRun == true;
+        var results = new List<ImportAdrResult>();
+        foreach (var rec in r.Records!)
+        {
+            DateOnly? decided = null;
+            if (rec.DecidedOn is not null)
+            {
+                if (!DateOnly.TryParseExact(rec.DecidedOn, "yyyy-MM-dd", out var day)) { results.Add(new ImportAdrResult(rec.Id, "invalid", "decidedOn must be yyyy-MM-dd.")); continue; }
+                decided = day;
+            }
+            try
+            {
+                var result = await _adrs.ImportAsync(call.Tenant, call.WorkspaceId, new ImportAdrCommand(rec.Id, rec.Markdown, ToPatch(rec.Fields), decided, rec.SourcePath), dryRun, ct);
+                if (result.Outcome == "created") call.Touch(result.Id);
+                results.Add(result);
+            }
+            catch (ValidationException ex) { results.Add(new ImportAdrResult(rec.Id, "invalid", ex.Message)); }
+        }
+        var counts = results.GroupBy(x => x.Outcome).ToDictionary(g => g.Key, g => g.Count());
+        call.TargetType = "adr-batch";
+        call.AuditSummary = $"import{(dryRun ? " (dry run)" : "")}: " + string.Join(", ", counts.Select(kv => $"{kv.Key}={kv.Value}"));
+        return new { dryRun, counts, results };
+    }
+
     // ------------------------------------------------------------------ Files / evidence
     public async Task<object> FileUploadRequest(ToolCall<FileUploadRequestRequest> call, CancellationToken ct)
     {

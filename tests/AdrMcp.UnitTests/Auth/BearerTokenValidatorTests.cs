@@ -408,4 +408,32 @@ public class BearerTokenValidatorTests : IDisposable
         Assert.False(disabled.Enabled);
         Assert.False((await disabled.ValidateAsync(TestIdp.Bearer(_idp.Mint()), default)).Succeeded);
     }
+
+    [Fact]
+    public async Task The_audience_is_matched_exactly_including_a_trailing_slash()
+    {
+        void Extra(AdrMcp.Application.Options.EntraTokenOptions o) => o.Audiences = new[] { "api://extra-audience" };
+        Assert.True((await CheckClaims(c => c["aud"] = "api://extra-audience", Extra)).Succeeded);
+        AssertRefused(await CheckClaims(c => c["aud"] = "api://extra-audience/", Extra), BearerFailure.WrongAudience, 401);
+    }
+
+    [Fact]
+    public async Task A_lifetime_at_the_ends_of_the_calendar_never_crashes_the_check()
+    {
+        // Signed tokens only, so this is not an attack; the point is a refusal or an acceptance, never an exception.
+        var far = await CheckClaims(c => c["exp"] = 253402300799L);
+        Assert.True(far.Succeeded || far.HttpStatus == 401);
+        var huge = await CheckClaims(c => c["exp"] = long.MaxValue);
+        Assert.True(huge.Succeeded || huge.HttpStatus == 401);
+        AssertRefused(await CheckClaims(c => c["exp"] = 0), BearerFailure.Expired, 401);   // the start of 1970 is simply in the past
+    }
+
+    [Fact]
+    public async Task Version_and_client_claims_of_the_wrong_json_type_are_refused_with_the_right_reason()
+    {
+        AssertRefused(await CheckClaims(c => c["ver"] = 2), BearerFailure.UnsupportedVersion, 401);
+        var arrayClient = await CheckClaims(c => c["azp"] = new JsonArray(TestIdp.AllowedClientId));
+        Assert.False(arrayClient.Succeeded);
+        Assert.Equal(401, arrayClient.HttpStatus);
+    }
 }

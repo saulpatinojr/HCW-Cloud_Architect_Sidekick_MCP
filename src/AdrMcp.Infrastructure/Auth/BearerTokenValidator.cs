@@ -23,7 +23,7 @@ public sealed class DisabledBearerTokenValidator : IBearerTokenValidator
 /// </summary>
 public sealed class BearerTokenValidator : IBearerTokenValidator
 {
-    public const int MaxTokenLength = 8 * 1024;
+    public const int MaxTokenLength = 16 * 1024;
     private const string RequiredAlgorithm = SecurityAlgorithms.RsaSha256;
 
     private readonly EntraTokenPolicy _policy;
@@ -65,6 +65,7 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
             ValidIssuer = _policy.Issuer,
             ValidateAudience = true,
             ValidAudiences = _policy.Audiences,
+            IgnoreTrailingSlashWhenValidatingAudience = false,   // exact match, also for the extra audiences
             // Lifetime is checked below against the injected clock, so both bounds are required and tests can fix the time.
             ValidateLifetime = false,
             RequireExpirationTime = false,
@@ -75,7 +76,9 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
         catch (Exception) { return BearerResult.Fail(BearerFailure.Malformed); }
         if (!result.IsValid) return BearerResult.Fail(Classify(result.Exception));
 
-        return CheckClaims(parsed);
+        // The token is signed by Entra, but a claim of an odd shape must still be a refusal and never an exception.
+        try { return CheckClaims(parsed); }
+        catch (Exception) { return BearerResult.Fail(BearerFailure.Malformed); }
     }
 
     private BearerResult CheckClaims(JsonWebToken token)
@@ -84,8 +87,9 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
         if (token.ValidTo == DateTime.MinValue || token.ValidFrom == DateTime.MinValue) return BearerResult.Fail(BearerFailure.MissingClaim);   // exp and nbf are both required
         var expires = new DateTimeOffset(DateTime.SpecifyKind(token.ValidTo, DateTimeKind.Utc));
         var notBefore = new DateTimeOffset(DateTime.SpecifyKind(token.ValidFrom, DateTimeKind.Utc));
-        if (expires + _policy.ClockSkew <= now) return BearerResult.Fail(BearerFailure.Expired);
-        if (notBefore - _policy.ClockSkew > now) return BearerResult.Fail(BearerFailure.NotYetValid);
+        // Arranged so that no date arithmetic can overflow for an exp or nbf at the ends of the calendar.
+        if (now - _policy.ClockSkew >= expires) return BearerResult.Fail(BearerFailure.Expired);
+        if (notBefore > now + _policy.ClockSkew) return BearerResult.Fail(BearerFailure.NotYetValid);
 
         if (!TryString(token, "ver", out var version) || version != "2.0") return BearerResult.Fail(BearerFailure.UnsupportedVersion);
         if (!TryString(token, "tid", out var tid)) return BearerResult.Fail(BearerFailure.MissingClaim);

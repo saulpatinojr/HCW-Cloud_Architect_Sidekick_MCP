@@ -50,12 +50,12 @@ public class McpChallengeTests
     }
 
     [Fact]
-    public void A_caller_without_an_adr_role_is_403_insufficient_scope()
+    public void A_caller_without_an_adr_role_is_a_plain_403_because_signing_in_again_cannot_fix_an_assignment()
     {
-        var c = McpChallenge.NoRole(Prm, Scope);
+        var c = McpChallenge.NoRole();
         Assert.Equal(403, c.StatusCode);
-        Assert.StartsWith("Bearer error=\"insufficient_scope\"", c.WwwAuthenticate);
-        Assert.Contains($"resource_metadata=\"{Prm}\"", c.WwwAuthenticate);
+        Assert.Null(c.WwwAuthenticate);   // an insufficient_scope challenge would send the client round a step-up loop for a scope it already holds
+        Assert.Equal("forbidden", c.Error);
     }
 
     [Fact]

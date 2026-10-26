@@ -184,6 +184,9 @@ jobs:
           if [ "$ADR_AUTH_MODE" = "EntraBuiltIn" ]; then
             for v in ADR_ENTRA_CLIENT_ID ADR_ENTRA_ALLOWED_CLIENT_IDS; do [ -n "${!v}" ] || missing="$missing $v"; done
           fi
+          if [ "$ADR_ENTRA_VALIDATE_IN_APP" = "true" ] && [ "$ADR_AUTH_MODE" != "EntraBuiltIn" ]; then
+            echo "::error::ADR_ENTRA_VALIDATE_IN_APP=true needs ADR_AUTH_MODE=EntraBuiltIn (it would otherwise be ignored)"; exit 1
+          fi
           if [ -n "$missing" ]; then echo "::error::ADR_DEPLOY_ENABLED is true but these variables are empty:$missing"; exit 1; fi
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Security.Cryptography;
 using AdrMcp.Infrastructure.Auth;
 using Microsoft.Extensions.Logging;
@@ -188,5 +189,63 @@ public class JwksSigningKeyProviderTests : IDisposable
 
         var line = Assert.Single(logs.Lines);
         Assert.Equal("Signing key refresh failed (invalid_document)", line);
+    }
+
+    private sealed class SizedContent : HttpContent
+    {
+        private readonly byte[] _body;
+        private readonly long? _declared;
+        public SizedContent(string body, long? declared) { _body = System.Text.Encoding.UTF8.GetBytes(body); _declared = declared; }
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => stream.WriteAsync(_body).AsTask();
+        protected override bool TryComputeLength(out long length) { length = _declared ?? 0; return _declared.HasValue; }
+    }
+
+    [Fact]
+    public async Task A_declared_length_over_the_cap_is_refused_even_when_the_body_is_short()
+    {
+        var (provider, handler) = Make();
+        handler.Override = _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new SizedContent(_idp.Jwks(), JwksSigningKeyProvider.MaxDocumentBytes + 1) };
+        Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync(TestIdp.KeyId, default)).Status);
+    }
+
+    [Fact]
+    public async Task A_body_over_the_cap_with_no_declared_length_is_refused()
+    {
+        var (provider, handler) = Make();
+        handler.Override = _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new SizedContent(new string(' ', JwksSigningKeyProvider.MaxDocumentBytes + 10) + _idp.Jwks(), null) };
+        Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync(TestIdp.KeyId, default)).Status);
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_for_an_unknown_key_id_keeps_answering_unavailable_inside_the_window_without_another_fetch()
+    {
+        var (provider, handler) = Make();
+        await provider.GetKeyAsync(TestIdp.KeyId, default);
+        _idp.Clock.Advance(JwksSigningKeyProvider.UnknownKeyRefreshInterval + TimeSpan.FromSeconds(1));
+        handler.Fail = true;
+        Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync("unknown-1", default)).Status);
+        Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync("unknown-2", default)).Status);   // still "could not tell", not "unknown"
+        Assert.Equal(2, handler.Requests);
+    }
+
+    [Fact]
+    public async Task A_caller_that_gives_up_mid_fetch_does_not_use_up_the_refresh_budget_for_the_next_caller()
+    {
+        using var next = RSA.Create(2048);
+        var published = _idp.Jwks();
+        var handler = new StubJwksHandler(() => published);
+        var provider = _idp.Provider(_idp.Policy(), handler);
+        await provider.GetKeyAsync(TestIdp.KeyId, default);
+
+        // Keys rotate; the first caller to notice disconnects while the refresh is under way.
+        published = _idp.Jwks((TestIdp.KeyId, _idp.Key, null), ("kid-next", next, null));
+        _idp.Clock.Advance(JwksSigningKeyProvider.UnknownKeyRefreshInterval + TimeSpan.FromSeconds(1));
+        handler.Delay = TimeSpan.FromSeconds(2);
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetKeyAsync("kid-next", cts.Token));
+
+        // The next caller, inside the same minute, must still be allowed to fetch and must find the rotated key.
+        handler.Delay = TimeSpan.Zero;
+        Assert.Equal(KeyLookupStatus.Found, (await provider.GetKeyAsync("kid-next", default)).Status);
     }
 }

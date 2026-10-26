@@ -26,7 +26,7 @@ Why twice: the edge layer is a preview feature the app cannot see into. If it is
 | Client | `azp` is on the allow-list (the same client IDs Easy Auth gets) | 401 |
 | Scope | a delegated token must carry `user_impersonation` (scope values are case sensitive). A token with no `scp` is refused unless `AllowApplicationTokens` is on | 403 |
 | Role | the `roles` claim is mapped to an ADR role through `Auth:AppRoleMap`; with no mapped role access is refused | 403 (tool call: `FORBIDDEN`) |
-| Size | a token over 8 KiB is refused unread | 401 |
+| Size | a token over 16 KiB is refused unread | 401 |
 
 Every check that cannot be decided because signing keys are missing ends in **503 / `AUTH_UNAVAILABLE` (retryable)**, never in acceptance. Signing keys are cached for 60 minutes (5 to 1440). A `kid` that is not cached triggers one refresh, at most one per minute per instance. Expired keys are never used if the refresh fails.
 
@@ -61,13 +61,14 @@ Bicep fills the first four from the values you already give for `EntraBuiltIn`, 
 | `GET /api/auth/check` | Runs the same checks as a tool call and answers with the HTTP status and `WWW-Authenticate` challenge the MCP spec asks for. Returns only the caller's own mapped roles, scopes and seconds left |
 | `GET /api/health` | Unchanged address. `host.json` now sets the route prefix to `""` so the well-known address can be at the root, so the health route is spelled out in the code |
 
-Both return 404 while the switch is off. Challenges (revision 2026-07-28 of the MCP authorization spec, RFC 6750 and RFC 9728):
+Both return 404 while the switch is off. **Reachability behind Easy Auth is not verified:** with authentication required (only `/api/health` is excluded) the platform may answer or refuse these anonymous calls before the app sees them. They are certain to be reachable where Easy Auth is not in front (the local runbook below); `/api/auth/check` with a token should pass through Easy Auth. The Bicep exclusion list is deliberately not widened until a staging app shows what the platform does. Challenges (revision 2026-07-28 of the MCP authorization spec, RFC 6750 and RFC 9728):
 
 | Situation | Status | Header |
 |---|---|---|
 | No token | 401 | `Bearer resource_metadata="<metadata url>", scope="api://<client id>/user_impersonation"` (no `error`) |
 | Token not valid | 401 | `Bearer error="invalid_token", error_description="The access token is not valid for this server.", resource_metadata="...", scope="..."` |
-| Wrong scope, application token, or no ADR role | 403 | `Bearer error="insufficient_scope", ..., scope="...", resource_metadata="..."` |
+| Wrong scope, or an application token while those are off | 403 | `Bearer error="insufficient_scope", ..., scope="...", resource_metadata="..."` |
+| Valid token, but the user holds no ADR role | 403 | none: an assignment is not fixed by signing in again, and a scope challenge would send clients round the spec's step-up loop |
 | Signing keys cannot be fetched | 503 | `Retry-After: 30`, no `WWW-Authenticate` (the token may be fine) |
 
 For the MCP address itself, App Service Authentication sends the challenge. The app cannot: the Functions host answers that address before the app sees the request.
@@ -89,6 +90,7 @@ Search Application Insights with `traces | where message startswith "Bearer toke
 | `wrong_client` | The client app is not in `Auth__Entra__AllowedClientIds__n` (and not pre-authorized on the server app) |
 | `missing_claim` | The token lacks `exp`, `nbf`, `tid`, `azp` or `oid` |
 | `insufficient_scope`, `application_token_not_allowed` | Delegated token without `user_impersonation`, or an application token while `AllowApplicationTokens` is off |
+| `no_role` (sign-in check only; a tool call answers `FORBIDDEN`) | The user holds no ADR app role: assign one on the enterprise application |
 | `keys_unavailable` | The key set could not be fetched (network, firewall, Entra outage). Callers get 503 and should retry |
 
 ## Owner-only first, group later
@@ -206,7 +208,7 @@ $arm  = az account get-access-token --tenant $tenant --resource-type arm --query
 "3 wrong audience      (expect 401): " + (curl.exe -s -o NUL -w '%{http_code}' -H "Authorization: Bearer $arm" "$base/api/auth/check")
 "4 valid token         (expect 200): " + (curl.exe -s -o NUL -w '%{http_code}' -H "Authorization: Bearer $good" "$base/api/auth/check")
 "5 who am I            (expect status ok, roles Admin): " + (curl.exe -s -H "Authorization: Bearer $good" "$base/api/auth/check")
-"6 metadata            (expect 200): " + (curl.exe -s -o NUL -w '%{http_code}' "$base/.well-known/oauth-protected-resource")
+"6 metadata            (expect 200 here; behind Easy Auth it may be 401, see above): " + (curl.exe -s -o NUL -w '%{http_code}' "$base/.well-known/oauth-protected-resource")
 "7 metadata, wrong path (expect 404): " + (curl.exe -s -o NUL -w '%{http_code}' "$base/.well-known/oauth-protected-resource/other")
 "8 the challenge on a 401:"; curl.exe -s -i "$base/api/auth/check" | Select-String 'WWW-Authenticate'
 $env:ADR_MCP_BEARER = $good; python scripts/smoke-test.py --url "$base/runtime/webhooks/mcp"; Remove-Item Env:ADR_MCP_BEARER
@@ -230,6 +232,7 @@ If any line differs from what is written, do not turn sign-in on for a client. O
 ## Known gaps
 
 - The Entra objects are created by hand-run commands, not by a setup script with a read-back `PASS` check (issue #27, item 4). That script, the client registrations and the staging sign-in of each client are the tenant half.
-- Easy Auth's MCP authorization is a preview feature; the app's own metadata and challenge are the stable fallback, but the MCP address can only be challenged by the platform.
+- Easy Auth's MCP authorization is a preview feature. The app's own metadata and challenge are meant as a fallback, but behind Easy Auth they may never be reached (see above), and the MCP address itself can only be challenged by the platform.
+- The key cache is strict by design: once its lifetime ends and a refresh fails, calls get 503 until the key endpoint answers, even for key IDs that were cached. A bounded grace period is an owner decision.
 - A custom domain may be needed for the Application ID URI (step 2).
 - Rate limiting and per-client quotas are not part of this change (docs/04, section 5).

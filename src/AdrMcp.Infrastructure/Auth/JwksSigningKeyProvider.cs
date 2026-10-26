@@ -92,8 +92,19 @@ public sealed class JwksSigningKeyProvider : ISigningKeyProvider, IDisposable
             if (_lastAttemptFailed && now - _lastAttempt < FailureBackoff)
                 return SigningKeyLookup.Unavailable;         // the last fetch failed a moment ago: do not try again yet
 
+            var previousAttempt = _lastAttempt;
+            var previousFailed = _lastAttemptFailed;
             _lastAttempt = now;
-            var fetched = await FetchAsync(ct).ConfigureAwait(false);
+            IReadOnlyDictionary<string, SecurityKey>? fetched;
+            try { fetched = await FetchAsync(ct).ConfigureAwait(false); }
+            catch (OperationCanceledException)
+            {
+                // The caller gave up. That is not a result: it must neither use up the refresh budget (which would turn the next
+                // caller's rotated key ID into a 401 for a minute) nor count as a failed fetch.
+                _lastAttempt = previousAttempt;
+                _lastAttemptFailed = previousFailed;
+                throw;
+            }
             _lastAttemptFailed = fetched is null;
             if (fetched is null)
             {

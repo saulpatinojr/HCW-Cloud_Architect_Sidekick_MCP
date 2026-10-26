@@ -45,7 +45,8 @@ public sealed class AuthCheckFunction
         var result = await _validator.ValidateAsync(req.Headers.Authorization.ToString(), ct);
         if (!result.Succeeded)
         {
-            _logger.LogWarning("Sign-in check refused ({Reason}, HTTP {Status})", result.ReasonCode, result.HttpStatus);
+            // A call with no credentials is the normal first step of every client's sign-in: not worth a warning each time.
+            _logger.Log(result.Failure == BearerFailure.MissingToken ? LogLevel.Information : LogLevel.Warning, "Sign-in check refused ({Reason}, HTTP {Status})", result.ReasonCode, result.HttpStatus);
             return Challenge(response, McpChallenge.For(result.Failure, metadataUrl, policy.ClientScope));
         }
 
@@ -54,7 +55,7 @@ public sealed class AuthCheckFunction
         if (roles.Count == 0)
         {
             _logger.LogWarning("Sign-in check refused (no_role, HTTP 403)");
-            return Challenge(response, McpChallenge.NoRole(metadataUrl, policy.ClientScope));
+            return Challenge(response, McpChallenge.NoRole());
         }
 
         var body = new

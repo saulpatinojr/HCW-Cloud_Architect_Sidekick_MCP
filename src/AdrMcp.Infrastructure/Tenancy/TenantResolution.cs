@@ -90,7 +90,7 @@ public sealed class HeaderTenantResolver : ITenantResolver
         if (!result.Succeeded)
         {
             // Fixed reason code only: never the token, a claim value or the token library's message.
-            _logger.LogWarning("Bearer token refused ({Reason}, HTTP {Status}) ({Correlation})", result.ReasonCode, result.HttpStatus, correlationId);
+            _logger.Log(result.Failure == BearerFailure.MissingToken ? LogLevel.Information : LogLevel.Warning, "Bearer token refused ({Reason}, HTTP {Status}) ({Correlation})", result.ReasonCode, result.HttpStatus, correlationId);
             throw result.HttpStatus switch
             {
                 503 => new DomainException(ErrorCodes.AuthUnavailable, "Sign-in cannot be checked right now. Retry shortly.", retryable: true),

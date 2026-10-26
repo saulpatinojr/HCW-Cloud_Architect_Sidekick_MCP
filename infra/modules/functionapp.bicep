@@ -25,7 +25,8 @@ param entraValidateInApp bool = false
 param entraResourceUri string = ''
 
 var entraEnabled = authMode == 'EntraBuiltIn'
-var validateInApp = entraEnabled && entraValidateInApp
+// Asking for the in-app check without Entra mode would silently do nothing: fail the deployment instead.
+var validateInApp = entraValidateInApp ? (entraEnabled ? true : fail('entraValidateInApp requires authMode EntraBuiltIn.')) : false
 var entraAllowedApps = filter(map(split(entraAllowedClientIds, ','), id => trim(id)), id => !empty(id))
 var entraTenant = empty(entraTenantId) ? tenant().tenantId : entraTenantId
 // EntraBuiltIn makes the MCP webhook Anonymous; without App Service Authentication in front of it the endpoint would be open,
@@ -42,10 +43,13 @@ var entraScope = entraEnabled
 var entraIssuer = '${environment().authentication.loginEndpoint}${entraTenant}/v2.0'
 // In-app token validation (ADR-0008): the same tenant, server app and client allow-list that App Service Authentication gets, so the two layers cannot drift apart.
 // Arrays use indexed names (Auth__Entra__AllowedClientIds__0 ...), the form Linux app settings can express.
+// The authority host comes from the cloud being deployed to (login.microsoftonline.com in public Azure), like the issuer Easy Auth uses.
+var entraAuthorityHost = replace(replace(environment().authentication.loginEndpoint, 'https://', ''), '/', '')
 var entraInAppSettings = validateInApp ? concat([
   { name: 'Auth__Entra__ValidateBearerToken', value: 'true' }
   { name: 'Auth__Entra__TenantId', value: entraTenant }
   { name: 'Auth__Entra__ClientId', value: entraClientId }
+  { name: 'Auth__Entra__AuthorityHost', value: entraAuthorityHost }
 ], map(range(0, length(entraAllowedApps)), i => { name: 'Auth__Entra__AllowedClientIds__${i}', value: entraAllowedApps[i] }),
   empty(entraResourceUri) ? [] : [ { name: 'Auth__Entra__ResourceUri', value: entraResourceUri } ]) : []
 

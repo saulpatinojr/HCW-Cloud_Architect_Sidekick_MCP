@@ -111,7 +111,8 @@ public class EntraDefinitionTests
     public void Bicep_only_emits_the_in_app_settings_for_entra_mode_with_the_switch_on()
     {
         var bicep = Read("infra/modules/functionapp.bicep");
-        Assert.Contains("var validateInApp = entraEnabled && entraValidateInApp", bicep);
+        Assert.Contains("var validateInApp = entraValidateInApp ? (entraEnabled ? true : fail(", bicep);   // asking for it without Entra mode fails the deployment
+        Assert.Contains("Auth__Entra__AuthorityHost", bicep);
         Assert.Contains("var entraInAppSettings = validateInApp ?", bicep);
         // Every Auth__Entra__ setting lives in that one conditional block.
         var code = string.Join("\n", bicep.Split('\n').Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)));   // comments may name the settings

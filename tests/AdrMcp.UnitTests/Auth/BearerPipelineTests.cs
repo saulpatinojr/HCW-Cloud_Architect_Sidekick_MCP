@@ -231,4 +231,30 @@ public class BearerPipelineTests : IDisposable
         foreach (var secret in new[] { good, expired, wrongAudience, TestIdp.ObjectId, TestIdp.UserName, "Owner Example", "kid-secret-looking-0001", TestIdp.KeyId, TestIdp.TenantId, TestIdp.ServerClientId, TestIdp.AllowedClientId, "not.a.jwt", "eyJ" })
             Assert.DoesNotContain(secret, all);                                   // ...and nothing else about the caller or the token
     }
+
+    [Fact]
+    public async Task The_authorization_header_is_found_whatever_its_case()
+    {
+        var host = Host();
+        var lower = new Dictionary<string, string> { ["authorization"] = TestIdp.Bearer(_idp.Mint()) };
+        Assert.True((await host.CallAsync("adr_list", new { }, lower)).GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task An_application_token_is_refused_by_default_and_works_with_its_app_role_once_allowed()
+    {
+        var appToken = _idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray("Adr.Reader"); }));
+        Assert.Equal(ErrorCodes.Forbidden, Code(await Host().CallAsync("adr_list", new { }, Headers(appToken))));
+        Assert.True((await Host(s => s["Auth:Entra:AllowApplicationTokens"] = "true").CallAsync("adr_list", new { }, Headers(appToken))).GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_adr_tenant_mapping_applies_to_a_verified_token_too()
+    {
+        var host = Host(s => s["Auth:Tenants:0:MapTo"] = "contoso");
+        var create = await host.CallAsync("adr_create", new { fields = new { title = "Mapped", decision = "D" } }, Headers(_idp.Mint()));
+        Assert.True(create.GetProperty("ok").GetBoolean(), create.ToString());
+        Assert.Single(host.Store.RawJson("adrs", "contoso|default"));
+        Assert.Empty(host.Store.RawJson("adrs", TestIdp.TenantId + "|default"));
+    }
 }

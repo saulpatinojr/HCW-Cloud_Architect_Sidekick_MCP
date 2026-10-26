@@ -10,7 +10,9 @@ public sealed record McpChallengeResponse(int StatusCode, string? WwwAuthenticat
 /// Builds the HTTP challenge the MCP authorization spec asks for (revision 2026-07-28; RFC 6750 section 3 and RFC 9728 section 5.1):
 ///  - no credentials: 401, <c>Bearer resource_metadata="..." scope="..."</c> and no <c>error</c>;
 ///  - a token that is not valid: 401, <c>error="invalid_token"</c> with a generic description (the reason goes to the log, not to the caller);
-///  - not enough scope or role: 403, <c>error="insufficient_scope"</c>, <c>scope</c> and <c>resource_metadata</c>;
+///  - not enough scope (or an application token where only delegated ones are accepted): 403, <c>error="insufficient_scope"</c>, <c>scope</c> and <c>resource_metadata</c>;
+///  - a valid token whose user holds no ADR role: 403 with no challenge, because signing in again cannot fix an assignment and the spec's
+///    step-up flow would otherwise send the client round the same consent loop;
 ///  - keys cannot be fetched: 503 with <c>Retry-After</c> and no <c>WWW-Authenticate</c>, because the credentials may be fine.
 /// The MCP webhook itself is challenged by App Service Authentication; this is used where the app owns the HTTP response.
 /// </summary>
@@ -41,14 +43,8 @@ public static class McpChallenge
         }
     }
 
-    /// <summary>403 for a caller whose token is fine but who holds no ADR role (an app role is an assignment, not a scope).</summary>
-    public static McpChallengeResponse NoRole(string resourceMetadataUrl, string scope)
-    {
-        Require(resourceMetadataUrl); Require(scope);
-        return new McpChallengeResponse(403,
-            $"Bearer error=\"insufficient_scope\", error_description=\"An ADR app role is required.\", scope=\"{scope}\", resource_metadata=\"{resourceMetadataUrl}\"",
-            null, "insufficient_scope");
-    }
+    /// <summary>403 for a caller whose token is fine but who holds no ADR role. An app role is an assignment in Entra, not a scope, so there is no challenge to answer.</summary>
+    public static McpChallengeResponse NoRole() => new(403, null, null, "forbidden");
 
     // The values are ours, but a quote or control character in one would break the header, so refuse rather than escape.
     private static void Require(string value)

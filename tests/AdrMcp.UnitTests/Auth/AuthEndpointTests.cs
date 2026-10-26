@@ -101,12 +101,12 @@ public class AuthEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task A_valid_token_without_an_adr_role_is_403_insufficient_scope()
+    public async Task A_valid_token_without_an_adr_role_is_a_plain_403_with_no_challenge()
     {
-        var (status, _, headers) = await Check(Host(), TestIdp.Bearer(_idp.Mint(_idp.Claims(c => c.Remove("roles")))));
+        var (status, body, headers) = await Check(Host(), TestIdp.Bearer(_idp.Mint(_idp.Claims(c => c.Remove("roles")))));
         Assert.Equal(403, status);
-        Assert.StartsWith("Bearer error=\"insufficient_scope\"", headers.WWWAuthenticate.ToString());
-        Assert.Contains($"resource_metadata=\"{Prm}\"", headers.WWWAuthenticate.ToString());
+        Assert.False(headers.ContainsKey("WWW-Authenticate"));
+        Assert.Equal("forbidden", JsonNode.Parse(body)!["error"]!.GetValue<string>());
     }
 
     [Fact]

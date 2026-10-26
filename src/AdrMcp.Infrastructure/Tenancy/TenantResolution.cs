@@ -22,10 +22,26 @@ public sealed record PlatformAuthentication(bool Enabled)
         => new(string.Equals(configuration[EnabledSetting], "true", StringComparison.OrdinalIgnoreCase));
 }
 
+/// <summary>Maps the app role values in a verified token (or platform principal) to ADR roles through <c>Auth:AppRoleMap</c>. One place, used by tool calls and the sign-in check.</summary>
+public static class EntraRoleMapper
+{
+    public static HashSet<Role> Map(AuthOptions options, IEnumerable<string> roleClaims)
+    {
+        var roles = new HashSet<Role>();
+        foreach (var rc in roleClaims) if (options.AppRoleMap.TryGetValue(rc, out var mappedRole) && Enum.TryParse<Role>(mappedRole, true, out var role)) roles.Add(role);
+        var grantsDefault = !string.Equals(options.DefaultRoleWhenNoAppRoles, "None", StringComparison.OrdinalIgnoreCase);
+        if (roles.Count == 0 && grantsDefault && Enum.TryParse<Role>(options.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
+        return roles;
+    }
+}
+
 /// <summary>
 /// Resolves the caller from transport headers. Two modes:
-///  - EntraBuiltIn: App Service Authentication (built-in MCP auth) validates the token at the edge and injects X-MS-CLIENT-PRINCIPAL;
-///    inbound copies of X-MS-* headers are stripped by the platform, so the header is trustworthy only in this mode.
+///  - EntraBuiltIn: App Service Authentication (built-in MCP auth) validates the token at the edge. Then either
+///      * (default) the app trusts X-MS-CLIENT-PRINCIPAL, which the platform injects and whose inbound copies it strips, so the
+///        header is trustworthy only while the platform is in front; or
+///      * (Auth:Entra:ValidateBearerToken, ADR-0008) the app verifies the Authorization bearer token itself and builds the principal only
+///        from it; X-MS-CLIENT-PRINCIPAL is not read at all.
 ///  - FunctionKey: single-tenant deployment or local development; the caller proved possession of the mcp_extension system key
 ///    at the edge and is bound to a configured tenant/workspace/roles. X-MS-CLIENT-PRINCIPAL is IGNORED in this mode (spoofable).
 /// Tool arguments are never consulted.
@@ -35,20 +51,26 @@ public sealed class HeaderTenantResolver : ITenantResolver
     private readonly AuthOptions _o;
     private readonly TenantDirectory _tenants;
     private readonly PlatformAuthentication _platform;
+    private readonly IBearerTokenValidator _bearer;
     private readonly ILogger<HeaderTenantResolver> _logger;
 
-    public HeaderTenantResolver(IOptions<AuthOptions> o, TenantDirectory tenants, PlatformAuthentication platform, ILogger<HeaderTenantResolver> logger)
+    public HeaderTenantResolver(IOptions<AuthOptions> o, TenantDirectory tenants, PlatformAuthentication platform, IBearerTokenValidator bearer, ILogger<HeaderTenantResolver> logger)
     {
-        _o = o.Value; _tenants = tenants; _platform = platform; _logger = logger;
+        _o = o.Value; _tenants = tenants; _platform = platform; _bearer = bearer; _logger = logger;
         if (IsEntra && !_platform.Enabled)
-            _logger.LogError("Auth:Mode is EntraBuiltIn but App Service Authentication is not enabled ({Setting} is not true); every request will be rejected.", PlatformAuthentication.EnabledSetting);
+        {
+            if (_bearer.Enabled)
+                _logger.LogWarning("Auth:Mode is EntraBuiltIn and bearer tokens are validated in the app, but App Service Authentication is not enabled ({Setting} is not true): initialize and tools/list are not protected, and /api/health reports unavailable.", PlatformAuthentication.EnabledSetting);
+            else
+                _logger.LogError("Auth:Mode is EntraBuiltIn but App Service Authentication is not enabled ({Setting} is not true); every request will be rejected.", PlatformAuthentication.EnabledSetting);
+        }
     }
 
     private bool IsEntra => string.Equals(_o.Mode, "EntraBuiltIn", StringComparison.OrdinalIgnoreCase);
 
     public Task<TenantContext> ResolveAsync(IReadOnlyDictionary<string, string> headers, string? sessionId, string correlationId, CancellationToken ct)
     {
-        if (IsEntra) return Task.FromResult(ResolveEntra(headers, sessionId, correlationId));
+        if (IsEntra) return _bearer.Enabled ? ResolveBearerAsync(headers, sessionId, correlationId, ct) : Task.FromResult(ResolveEntra(headers, sessionId, correlationId));
         if (string.Equals(_o.Mode, "FunctionKey", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(ResolveStatic(sessionId, correlationId));
         throw new DomainException(ErrorCodes.Unauthorized, $"Unsupported Auth:Mode '{_o.Mode}'.");
     }
@@ -59,6 +81,31 @@ public sealed class HeaderTenantResolver : ITenantResolver
         if (roles.Count == 0) { roles.Add(Role.Reader); _logger.LogWarning("Auth:StaticRoles is empty; the function-key principal is Reader only."); }
         var workspaces = _tenants.WorkspacesFor(_o.StaticTenantId, _o.StaticWorkspaceId);
         return new TenantContext(_o.StaticTenantId, _o.StaticPrincipalId, _o.StaticPrincipalId, roles, workspaces, _o.StaticWorkspaceId, "FunctionKey", correlationId, sessionId);
+    }
+
+    /// <summary>The principal comes only from a token whose signature and claims were verified here; no platform header is read.</summary>
+    private async Task<TenantContext> ResolveBearerAsync(IReadOnlyDictionary<string, string> headers, string? sessionId, string correlationId, CancellationToken ct)
+    {
+        var result = await _bearer.ValidateAsync(Get(headers, "Authorization"), ct).ConfigureAwait(false);
+        if (!result.Succeeded)
+        {
+            // Fixed reason code only: never the token, a claim value or the token library's message.
+            _logger.Log(result.Failure == BearerFailure.MissingToken ? LogLevel.Information : LogLevel.Warning, "Bearer token refused ({Reason}, HTTP {Status}) ({Correlation})", result.ReasonCode, result.HttpStatus, correlationId);
+            throw result.HttpStatus switch
+            {
+                503 => new DomainException(ErrorCodes.AuthUnavailable, "Sign-in cannot be checked right now. Retry shortly.", retryable: true),
+                403 => new ForbiddenException("The access token does not carry the required scope."),
+                _ when result.Failure == BearerFailure.MissingToken => new DomainException(ErrorCodes.Unauthorized, "No access token was sent. Sign in to the MCP server."),
+                _ => new DomainException(ErrorCodes.Unauthorized, "A valid access token is required."),
+            };
+        }
+        var p = result.Principal!;
+        if (!_tenants.TryResolveTenant(p.TenantId, out var tenantId)) throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
+        var roles = EntraRoleMapper.Map(_o, p.Roles);
+        var workspaces = _tenants.WorkspacesFor(tenantId, _o.DefaultWorkspaceId);
+        var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
+        var principalId = p.Scopes.Count == 0 ? $"app:{p.ClientAppId}" : $"user:{p.ObjectId}";
+        return new TenantContext(tenantId, principalId, p.Display ?? p.ObjectId, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
     }
 
     private TenantContext ResolveEntra(IReadOnlyDictionary<string, string> headers, string? sessionId, string correlationId)
@@ -88,10 +135,7 @@ public sealed class HeaderTenantResolver : ITenantResolver
 
         if (!_tenants.TryResolveTenant(tid, out var tenantId)) throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
         var roleClaims = principal.Claims?.Where(c => c.Typ is "roles" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role").Select(c => c.Val) ?? Array.Empty<string>();
-        var roles = new HashSet<Role>();
-        foreach (var rc in roleClaims) if (_o.AppRoleMap.TryGetValue(rc, out var mappedRole) && Enum.TryParse<Role>(mappedRole, true, out var role)) roles.Add(role);
-        var grantsDefault = !string.Equals(_o.DefaultRoleWhenNoAppRoles, "None", StringComparison.OrdinalIgnoreCase);
-        if (roles.Count == 0 && grantsDefault && Enum.TryParse<Role>(_o.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
+        var roles = EntraRoleMapper.Map(_o, roleClaims);
         var workspaces = _tenants.WorkspacesFor(tenantId, _o.DefaultWorkspaceId);
         var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
         return new TenantContext(tenantId, appId is not null && oid == appId ? $"app:{appId}" : $"user:{oid}", display, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);

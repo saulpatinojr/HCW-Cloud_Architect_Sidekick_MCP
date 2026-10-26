@@ -19,8 +19,14 @@ param entraClientId string = ''
 param entraTenantId string = ''
 @description('Comma-separated client IDs of the applications allowed to obtain tokens for this server.')
 param entraAllowedClientIds string = ''
+@description('EntraBuiltIn only: also verify the bearer token inside the app (signature, issuer, tenant, audience, client, scope, role), in addition to App Service Authentication at the edge. Off by default; turn it on after the runbook in docs/11-entra-sign-in.md passes (ADR-0008).')
+param entraValidateInApp bool = false
+@description('Canonical MCP URL (the RFC 8707 resource clients send) when the app is reached on a custom domain. Empty means https://<default host name>/runtime/webhooks/mcp, using the host name the platform injects.')
+param entraResourceUri string = ''
 
 var entraEnabled = authMode == 'EntraBuiltIn'
+// Asking for the in-app check without Entra mode would silently do nothing: fail the deployment instead.
+var validateInApp = entraValidateInApp ? (entraEnabled ? true : fail('entraValidateInApp requires authMode EntraBuiltIn.')) : false
 var entraAllowedApps = filter(map(split(entraAllowedClientIds, ','), id => trim(id)), id => !empty(id))
 var entraTenant = empty(entraTenantId) ? tenant().tenantId : entraTenantId
 // EntraBuiltIn makes the MCP webhook Anonymous; without App Service Authentication in front of it the endpoint would be open,
@@ -35,6 +41,17 @@ var entraScope = entraEnabled
               : 'api://${entraClientId}/user_impersonation')))
   : ''
 var entraIssuer = '${environment().authentication.loginEndpoint}${entraTenant}/v2.0'
+// In-app token validation (ADR-0008): the same tenant, server app and client allow-list that App Service Authentication gets, so the two layers cannot drift apart.
+// Arrays use indexed names (Auth__Entra__AllowedClientIds__0 ...), the form Linux app settings can express.
+// The authority host comes from the cloud being deployed to (login.microsoftonline.com in public Azure), like the issuer Easy Auth uses.
+var entraAuthorityHost = replace(replace(environment().authentication.loginEndpoint, 'https://', ''), '/', '')
+var entraInAppSettings = validateInApp ? concat([
+  { name: 'Auth__Entra__ValidateBearerToken', value: 'true' }
+  { name: 'Auth__Entra__TenantId', value: entraTenant }
+  { name: 'Auth__Entra__ClientId', value: entraClientId }
+  { name: 'Auth__Entra__AuthorityHost', value: entraAuthorityHost }
+], map(range(0, length(entraAllowedApps)), i => { name: 'Auth__Entra__AllowedClientIds__${i}', value: entraAllowedApps[i] }),
+  empty(entraResourceUri) ? [] : [ { name: 'Auth__Entra__ResourceUri', value: entraResourceUri } ]) : []
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageAccountName }
 
@@ -121,7 +138,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         // Enroll the same tenant in the app (it then refuses any other tid) so scheduled maintenance also covers it. Array form:
         // Linux app setting names cannot hold a GUID key. Add workspaces with Auth__Tenants__0__Workspaces__0..n (docs/05).
         { name: 'Auth__Tenants__0__Id', value: entraTenant }
-      ] : [])
+      ] : [], entraInAppSettings)
     }
   }
 }

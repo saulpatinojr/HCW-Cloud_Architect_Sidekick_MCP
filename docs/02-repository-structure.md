@@ -27,7 +27,9 @@
 │   ├── 06-claude-connection.md        # I
 │   ├── 07-tests-and-ci.md             # J + K
 │   ├── 08-roadmap.md                  # L
-│   └── 09-fitness-functions-and-memory.md  # §14, §15, §16
+│   ├── 09-fitness-functions-and-memory.md  # §14, §15, §16
+│   ├── 10-legacy-adr-import.md
+│   └── 11-entra-sign-in.md            # Entra sign-in: settings, reason codes, real-tenant runbook (ADR-0008)
 ├── infra/
 │   ├── main.bicep · main.parameters.json · abbreviations.json
 │   └── modules/{identity,monitoring,network,storage,cosmos,keyvault,functionapp,rbac,private-endpoint}.bicep
@@ -37,6 +39,7 @@
 │   ├── mcp-requests/*.json            # JSON-RPC bodies for curl / MCP Inspector
 │   └── claude/.mcp.json.example       # Claude Code project config
 ├── scripts/
+│   ├── entra/*.json                   # app roles, delegated scope and pre-authorization the Entra runbook creates (checked by tests)
 │   ├── smoke-test.py                  # MCP protocol smoke test (stdlib only)
 │   ├── local-mcp-call.sh              # curl helper for one tool call
 │   ├── postprovision.sh               # azd hook: Key Vault salt secret

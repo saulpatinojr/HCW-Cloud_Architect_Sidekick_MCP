@@ -29,6 +29,12 @@ param entraTenantId string = ''
 @description('Comma-separated client IDs of the applications allowed to call the server (for example your Claude Code public client and Claude connector app). Required when authMode is EntraBuiltIn.')
 param entraAllowedClientIds string = ''
 
+@description('EntraBuiltIn only: also verify the bearer token inside the app, in addition to App Service Authentication (ADR-0008, docs/11-entra-sign-in.md). Off by default; turn it on only after the real-tenant runbook passes.')
+param entraValidateInApp bool = false
+
+@description('Canonical MCP URL when the app is reached on a custom domain. Empty means https://<default host name>/runtime/webhooks/mcp.')
+param entraResourceUri string = ''
+
 @description('Enable VNet integration with private endpoints for Storage, Cosmos DB and Key Vault (production option).')
 param enablePrivateNetworking bool = false
 
@@ -155,6 +161,8 @@ module functionApp './modules/functionapp.bicep' = {
     entraClientId: entraClientId
     entraTenantId: entraTenantId
     entraAllowedClientIds: entraAllowedClientIds
+    entraValidateInApp: entraValidateInApp
+    entraResourceUri: entraResourceUri
     vnetIntegrationSubnetId: enablePrivateNetworking ? network.?outputs.appSubnetId ?? '' : ''
   }
 }

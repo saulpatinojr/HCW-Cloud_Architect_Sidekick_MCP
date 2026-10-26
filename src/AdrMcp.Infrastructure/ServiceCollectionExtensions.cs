@@ -2,6 +2,7 @@ using AdrMcp.Application.Abstractions;
 using AdrMcp.Application.Options;
 using AdrMcp.Application.Services;
 using AdrMcp.Application.Tools;
+using AdrMcp.Infrastructure.Auth;
 using AdrMcp.Infrastructure.Blob;
 using AdrMcp.Infrastructure.Cosmos;
 using AdrMcp.Infrastructure.InMemory;
@@ -15,6 +16,7 @@ using Azure.Storage.Queues;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AdrMcp.Infrastructure;
@@ -32,11 +34,13 @@ public static class ServiceCollectionExtensions
         services.Configure<IdempotencyOptions>(configuration.GetSection(IdempotencyOptions.Section));
         services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.Section));
         services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();
+        services.AddSingleton<IValidateOptions<AuthOptions>>(new EntraTokenOptionsValidator(configuration));
         services.AddOptions<AuthOptions>().ValidateOnStart();
         services.AddSingleton(sp => new TenantDirectory(sp.GetRequiredService<IOptions<AuthOptions>>().Value));
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton(PlatformAuthentication.FromConfiguration(configuration));
+        AddBearerTokenValidation(services, configuration);
         services.AddSingleton<ITenantResolver, HeaderTenantResolver>();
         services.AddSingleton<IAuthorizationService, RoleAuthorizationService>();
 
@@ -55,6 +59,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ToolHandlers>();
         services.AddSingleton<IEvidenceSetProvider, BlobEvidenceSetProvider>();
         return services;
+    }
+
+    /// <summary>
+    /// In-app bearer token validation (ADR-0008). With <c>Auth:Entra:ValidateBearerToken</c> off (the default) nothing is built: no HTTP client,
+    /// no key fetch, and <see cref="IBearerTokenValidator.Enabled"/> is false. When on, <see cref="EntraTokenOptionsValidator"/> has already
+    /// accepted the settings at host start (ValidateOnStart), so the policy can be built without further checks.
+    /// </summary>
+    private static void AddBearerTokenValidation(IServiceCollection services, IConfiguration configuration)
+    {
+        // The policy and the key provider are built only when something asks for them, which happens only while validation is on.
+        services.AddSingleton(sp => EntraTokenPolicy.From(sp.GetRequiredService<IOptions<AuthOptions>>().Value.Entra, configuration[EntraTokenPolicy.PlatformHostNameSetting]));
+        services.AddSingleton<ISigningKeyProvider>(sp => new JwksSigningKeyProvider(
+            sp.GetRequiredService<EntraTokenPolicy>(), sp.GetRequiredService<IClock>(), sp.GetRequiredService<ILogger<JwksSigningKeyProvider>>()));
+        services.AddSingleton<IBearerTokenValidator>(sp => sp.GetRequiredService<IOptions<AuthOptions>>().Value.Entra.ValidateBearerToken
+            ? new BearerTokenValidator(sp.GetRequiredService<EntraTokenPolicy>(), sp.GetRequiredService<ISigningKeyProvider>(), sp.GetRequiredService<IClock>(), sp.GetRequiredService<ILogger<BearerTokenValidator>>())
+            : new DisabledBearerTokenValidator());
     }
 
     public static IServiceCollection AddAdrPersistence(this IServiceCollection services, IConfiguration configuration)

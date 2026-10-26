@@ -1,0 +1,34 @@
+[
+  {
+    "allowedMemberTypes": [ "User" ],
+    "description": "Read decisions, jobs and decision memory.",
+    "displayName": "ADR Reader",
+    "id": "0e03c245-1971-48d4-94fe-d88d9a5d70f6",
+    "isEnabled": true,
+    "value": "Adr.Reader"
+  },
+  {
+    "allowedMemberTypes": [ "User" ],
+    "description": "Reader permissions, plus create, edit and propose changes to decisions, upload evidence and run analysis.",
+    "displayName": "ADR Author",
+    "id": "d4c8aa2f-ba45-47db-98ed-043f51ce168c",
+    "isEnabled": true,
+    "value": "Adr.Author"
+  },
+  {
+    "allowedMemberTypes": [ "User" ],
+    "description": "Author permissions, plus approve changes, move decisions through their lifecycle and import decisions.",
+    "displayName": "ADR Approver",
+    "id": "d3631fd7-1b13-4a8e-9f5f-de8636efbcbb",
+    "isEnabled": true,
+    "value": "Adr.Approver"
+  },
+  {
+    "allowedMemberTypes": [ "User" ],
+    "description": "Every permission the server has.",
+    "displayName": "ADR Admin",
+    "id": "e9b33a7a-9254-469c-bff7-96ecbd5cfb62",
+    "isEnabled": true,
+    "value": "Adr.Admin"
+  }
+]

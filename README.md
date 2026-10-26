@@ -109,7 +109,7 @@ Full walkthrough: [Local development & deployment](docs/05-local-dev-and-deploy.
 | **VS Code / Copilot** | `.vscode/mcp.json` (prompts for host and key) |
 | **Anything else** | Any MCP client that speaks Streamable HTTP |
 
-Details, OAuth notes and upload guidance: [Connecting Claude](docs/06-claude-connection.md).
+Details, OAuth notes and upload guidance: [Connecting Claude](docs/06-claude-connection.md). Signing in with Microsoft Entra ID instead of a shared key (settings, what is verified and what is not, and a real-tenant runbook): [Entra sign-in](docs/11-entra-sign-in.md).
 
 ## Tools
 
@@ -144,6 +144,7 @@ All settings are plain app settings (`Section__Key`). Placeholders only; secrets
 | `Storage__BlobServiceUri` / `Storage__QueueServiceUri` | — | Storage endpoints (managed identity); `Storage__ConnectionString=UseDevelopmentStorage=true` for Azurite |
 | `Auth__Mode` | `FunctionKey` | `FunctionKey` (system key at the edge, static tenant binding) or `EntraBuiltIn` (App Service auth, roles from Entra app roles) |
 | `Auth__StaticRoles__n` | none → Reader | Roles for the key-based principal (`Reader`, `Author`, `Approver`, `Admin`) |
+| `Auth__Entra__ValidateBearerToken` and `Auth__Entra__*` | `false` | Entra mode, optional second layer: the app verifies the bearer token itself (tenant, client IDs, scope, key cache). Off by default; see [Entra sign-in](docs/11-entra-sign-in.md) |
 | `Auth__DefaultRoleWhenNoAppRoles` | `None` | Entra mode: role for a caller with no mapped app role (`None` refuses it; `Reader` lets any tenant user read) |
 | `Auth__Tenants__n__Id` / `__MapTo` / `__Workspaces__n` | none | Entra mode: enrolled tenant (tid GUID), optional ADR tenant ID to store it under, and its workspaces (`default` when empty). Once any tenant is enrolled, other tenants are refused; each tenant needs its own ADR tenant ID. Bicep enrolls the deployment tenant |
 | `Auth__TenantWorkspaces__<tenant>__n` | `default` | Workspaces a tenant may use, keyed by ADR tenant ID. Linux app setting names allow only letters, digits and `_`, so use `Auth__Tenants` for a GUID tenant |

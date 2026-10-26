@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace AdrMcp.Functions.Http;
 
-/// <summary>Liveness probe for smoke tests and load balancers. Returns no configuration or secrets.</summary>
+/// <summary>Liveness probe for smoke tests and load balancers. Returns no configuration or secrets. The route is spelled out because host.json sets the route prefix to "" (ADR-0008).</summary>
 public sealed class HealthFunction
 {
     private readonly bool _ready;
@@ -19,7 +19,7 @@ public sealed class HealthFunction
         => _ready = !string.Equals(auth.Value.Mode, "EntraBuiltIn", StringComparison.OrdinalIgnoreCase) || platform.Enabled;
 
     [Function("health")]
-    public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req)
+    public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/health")] HttpRequest req)
         => _ready
             ? new OkObjectResult(new { status = "ok", server = "adr-intelligence", tools = ToolCatalog.Implemented.Count(), utc = DateTimeOffset.UtcNow })
             : new ObjectResult(new { status = "unavailable" }) { StatusCode = StatusCodes.Status503ServiceUnavailable };

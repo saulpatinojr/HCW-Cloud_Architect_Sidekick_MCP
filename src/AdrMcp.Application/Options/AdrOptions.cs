@@ -72,7 +72,7 @@ public sealed class IdempotencyOptions
 public sealed class AuthOptions
 {
     public const string Section = "Auth";
-    /// <summary>"EntraBuiltIn" (trust X-MS-CLIENT-PRINCIPAL injected by App Service Authentication) or "FunctionKey" (single-tenant, static binding).</summary>
+    /// <summary>"EntraBuiltIn" (App Service Authentication at the edge; the principal comes from X-MS-CLIENT-PRINCIPAL, or from the verified bearer token when <see cref="EntraTokenOptions.ValidateBearerToken"/> is on) or "FunctionKey" (single-tenant, static binding).</summary>
     public string Mode { get; set; } = "FunctionKey";
     public string StaticTenantId { get; set; } = "local-tenant";
     public string StaticWorkspaceId { get; set; } = "default";
@@ -97,6 +97,49 @@ public sealed class AuthOptions
     /// <summary>Role granted to an Entra principal that carries no mapped app role. "None" (default) grants nothing, so every caller
     /// needs an assigned app role (least privilege); set "Reader" to let any authenticated caller in the tenant read.</summary>
     public string DefaultRoleWhenNoAppRoles { get; set; } = "None";
+    /// <summary>In-process validation of the bearer token (ADR-0008). Off by default; see <see cref="EntraTokenOptions"/>.</summary>
+    public EntraTokenOptions Entra { get; set; } = new();
+}
+
+/// <summary>
+/// Validates the <c>Authorization: Bearer</c> token inside the app, in addition to App Service Authentication at the edge
+/// (ADR-0008, docs/11-entra-sign-in.md). Settings are <c>Auth__Entra__*</c>. Everything is off by default, so local runs and the
+/// FunctionKey deployment behave exactly as before. When <see cref="ValidateBearerToken"/> is true the principal is built only from
+/// the verified token and <c>X-MS-CLIENT-PRINCIPAL</c> is ignored. Arrays are bound from <c>__0</c>, <c>__1</c> settings, so their
+/// defaults stay empty (configuration arrays append to defaults); the effective defaults are applied in code.
+/// </summary>
+public sealed class EntraTokenOptions
+{
+    public const string DefaultAuthorityHost = "login.microsoftonline.com";
+    /// <summary>The delegated scope of the server app (a scope value, not an app role value: Entra keeps both in one collection).</summary>
+    public const string DefaultScope = "user_impersonation";
+    public const int DefaultClockSkewSeconds = 60;
+    public const int DefaultJwksCacheMinutes = 60;
+
+    /// <summary>Master switch. Requires <c>Auth:Mode=EntraBuiltIn</c>.</summary>
+    public bool ValidateBearerToken { get; set; }
+    /// <summary>Entra tenant (directory) ID whose tokens are accepted (GUID). Single tenant.</summary>
+    public string TenantId { get; set; } = "";
+    /// <summary>Client ID (GUID) of the server app registration; the <c>aud</c> of a v2 access token.</summary>
+    public string ClientId { get; set; } = "";
+    /// <summary>Extra accepted <c>aud</c> values besides <see cref="ClientId"/> (for example <c>api://client-id</c> for a v1 app). Empty by default.</summary>
+    public string[] Audiences { get; set; } = Array.Empty<string>();
+    /// <summary>Client application IDs (GUIDs) allowed as the token's <c>azp</c>; the same list given to App Service Authentication.</summary>
+    public string[] AllowedClientIds { get; set; } = Array.Empty<string>();
+    /// <summary>Scope values (short names) of which a delegated token must carry one. Empty means <see cref="DefaultScope"/>.</summary>
+    public string[] RequiredScopes { get; set; } = Array.Empty<string>();
+    /// <summary>Accept tokens that have no <c>scp</c> claim (client-credentials callers) when they carry an app role. Off: delegated user tokens only.</summary>
+    public bool AllowApplicationTokens { get; set; }
+    /// <summary>Sign-in host name only; builds the issuer and the key address. Sovereign clouds use their own host.</summary>
+    public string AuthorityHost { get; set; } = DefaultAuthorityHost;
+    /// <summary>Optional key set address instead of the built one. https only, except a loopback address for local tests.</summary>
+    public string JwksUrl { get; set; } = "";
+    /// <summary>Allowed difference in seconds when checking <c>exp</c> and <c>nbf</c> (0 to 300).</summary>
+    public int ClockSkewSeconds { get; set; } = DefaultClockSkewSeconds;
+    /// <summary>How long fetched signing keys are used (5 to 1440). Once they expire and cannot be refreshed, calls get 503, never "accept".</summary>
+    public int JwksCacheMinutes { get; set; } = DefaultJwksCacheMinutes;
+    /// <summary>Canonical MCP URL (RFC 8707 resource). Empty means https://&lt;WEBSITE_HOSTNAME&gt;/runtime/webhooks/mcp, using the host name the platform injects.</summary>
+    public string ResourceUri { get; set; } = "";
 }
 
 /// <summary>One enrolled Entra tenant. See <see cref="AuthOptions.Tenants"/>.</summary>

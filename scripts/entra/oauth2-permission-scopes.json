@@ -1,0 +1,16 @@
+{
+  "api": {
+    "oauth2PermissionScopes": [
+      {
+        "adminConsentDescription": "Lets an application call the ADR Intelligence MCP server on behalf of the signed-in user. What the user may do is decided by the user's ADR app role.",
+        "adminConsentDisplayName": "Access the ADR Intelligence MCP server",
+        "id": "3fa7cf52-5395-442c-8872-a932349a6d59",
+        "isEnabled": true,
+        "type": "User",
+        "userConsentDescription": "Lets this application use the ADR Intelligence MCP server as you.",
+        "userConsentDisplayName": "Access the ADR Intelligence MCP server as you",
+        "value": "user_impersonation"
+      }
+    ]
+  }
+}

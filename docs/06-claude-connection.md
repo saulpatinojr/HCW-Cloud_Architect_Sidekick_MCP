@@ -29,7 +29,7 @@ Project-scoped config shared with the team (`.mcp.json`, committed; the key is r
 }
 ```
 
-Entra-protected server (built-in MCP auth, preview): Entra ID does not support Dynamic Client Registration, so register a **public client** app in your tenant (redirect URI for Claude Code's local callback, e.g. `http://localhost:<port>/callback` **[VERIFY the exact redirect URI in the Claude Code OAuth docs]**), pre-authorize it on the server app's `user_impersonation` scope, and add its client ID to `ADR_ENTRA_ALLOWED_CLIENT_IDS` before `azd provision` (App Service Authentication refuses tokens obtained by any other client), then:
+Entra-protected server (built-in MCP auth, preview; the code half of issue #27 and its tenant runbook are in [Entra sign-in](11-entra-sign-in.md), including which client app ID and redirect URI each client needs): Entra ID does not support Dynamic Client Registration, so register a **public client** app in your tenant (redirect URI for Claude Code's local callback, e.g. `http://localhost:<port>/callback` **[VERIFY the exact redirect URI in the Claude Code OAuth docs]**), pre-authorize it on the server app's `user_impersonation` scope, and add its client ID to `ADR_ENTRA_ALLOWED_CLIENT_IDS` before `azd provision` (App Service Authentication refuses tokens obtained by any other client), then:
 
 ```bash
 claude mcp add --transport http adr https://<app>.azurewebsites.net/runtime/webhooks/mcp \

@@ -13,6 +13,8 @@ public static class ErrorCodes
     public const string HumanOwnedFieldProtected = "HUMAN_OWNED_FIELD_PROTECTED";
     public const string Unauthorized = "UNAUTHORIZED";
     public const string Forbidden = "FORBIDDEN";
+    /// <summary>Sign-in cannot be checked right now (signing keys could not be fetched). Retryable; never means "accepted".</summary>
+    public const string AuthUnavailable = "AUTH_UNAVAILABLE";
     public const string TenantMismatch = "TENANT_MISMATCH";
     public const string PolicyBlocked = "POLICY_BLOCKED";
     public const string UploadRejected = "UPLOAD_REJECTED";

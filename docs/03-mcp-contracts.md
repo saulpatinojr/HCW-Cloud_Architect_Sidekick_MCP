@@ -59,7 +59,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AdrCreate`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `CONFLICT`, `PAYLOAD_TOO_LARGE`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `CONFLICT`, `PAYLOAD_TOO_LARGE`
 
 <details><summary>Input schema</summary>
 
@@ -788,7 +788,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Mvp**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -1280,7 +1280,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Mvp**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
 
 <details><summary>Input schema</summary>
 
@@ -1537,7 +1537,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Mvp**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
 
 <details><summary>Input schema</summary>
 
@@ -1813,7 +1813,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `AdrEdit`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `ETAG_MISMATCH`, `INVALID_STATUS_TRANSITION`, `CONFLICT`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `ETAG_MISMATCH`, `INVALID_STATUS_TRANSITION`, `CONFLICT`
 
 <details><summary>Input schema</summary>
 
@@ -2448,7 +2448,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AdrPropose`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, `HUMAN_OWNED_FIELD_PROTECTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, `HUMAN_OWNED_FIELD_PROTECTED`
 
 <details><summary>Input schema</summary>
 
@@ -2735,7 +2735,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AdrApproveChange`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`, `CONFLICT`, `ETAG_MISMATCH`, `INVALID_STATUS_TRANSITION`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`, `CONFLICT`, `ETAG_MISMATCH`, `INVALID_STATUS_TRANSITION`
 
 <details><summary>Input schema</summary>
 
@@ -3038,7 +3038,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `AdrApproveChange`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`, `CONFLICT`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`, `CONFLICT`
 
 <details><summary>Input schema</summary>
 
@@ -3237,7 +3237,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `AdrSupersede`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`
 
 <details><summary>Input schema</summary>
 
@@ -3508,7 +3508,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `AdrArchive`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `INVALID_STATUS_TRANSITION`
 
 <details><summary>Input schema</summary>
 
@@ -3706,7 +3706,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Extended**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -3877,7 +3877,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `AdrImport`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`
 
 <details><summary>Input schema</summary>
 
@@ -4252,7 +4252,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Extended**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -4390,7 +4390,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `EvidenceUpload`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UNSUPPORTED_FILE_TYPE`, `PAYLOAD_TOO_LARGE`, `CONFLICT`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UNSUPPORTED_FILE_TYPE`, `PAYLOAD_TOO_LARGE`, `CONFLICT`
 
 <details><summary>Input schema</summary>
 
@@ -4598,7 +4598,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `EvidenceUpload`
 - Idempotency: Natural
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPLOAD_NOT_FOUND`, `UPLOAD_EXPIRED`, `CHECKSUM_MISMATCH`, `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_FILE_TYPE`, `CONTENT_SAFETY_BLOCKED`, `UPLOAD_REJECTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPLOAD_NOT_FOUND`, `UPLOAD_EXPIRED`, `CHECKSUM_MISMATCH`, `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_FILE_TYPE`, `CONTENT_SAFETY_BLOCKED`, `UPLOAD_REJECTED`
 
 <details><summary>Input schema</summary>
 
@@ -4813,7 +4813,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `EvidenceUpload`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `POLICY_BLOCKED`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `POLICY_BLOCKED`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -4997,7 +4997,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `EvidenceUpload`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `NOT_FOUND`, `CONFLICT`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `NOT_FOUND`, `CONFLICT`
 
 <details><summary>Input schema</summary>
 
@@ -5202,7 +5202,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Extended**, implemented
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
 
 <details><summary>Input schema</summary>
 
@@ -5363,7 +5363,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `EvidenceRemove`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -5506,7 +5506,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Mvp**, implemented
 - Required permission: `AnalysisRun`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `PAYLOAD_TOO_LARGE`
 
 <details><summary>Input schema</summary>
 
@@ -5771,7 +5771,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AnalysisRun`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `ETAG_MISMATCH`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`, `ETAG_MISMATCH`
 
 <details><summary>Input schema</summary>
 
@@ -6061,7 +6061,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -6208,7 +6208,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AnalysisRun`
 - Idempotency: Natural
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -6558,7 +6558,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AnalysisRun`
 - Idempotency: Natural
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -6859,7 +6859,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `AnalysisRun`
 - Idempotency: Natural
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `ADR_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -7378,7 +7378,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Mvp**, implemented
 - Required permission: `FindingReview`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -7620,7 +7620,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -7741,7 +7741,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AnalysisRun`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -7871,7 +7871,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AnalysisRun`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8027,7 +8027,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AnalysisRun`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8191,7 +8191,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Extended**, implemented
 - Required permission: `MemoryRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`
 
 <details><summary>Input schema</summary>
 
@@ -8372,7 +8372,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8493,7 +8493,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `RuleManage`
 - Idempotency: Key
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8623,7 +8623,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AnalysisRun`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8743,7 +8743,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AdrRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8855,7 +8855,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Later**, **specified only (not exposed by the host until implemented)**
 - Required permission: `AnalysisRun`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `NOT_IMPLEMENTED`
 
 <details><summary>Input schema</summary>
 
@@ -8976,7 +8976,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Mvp**, implemented
 - Required permission: `JobRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 
@@ -9162,7 +9162,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **mutating**, phase **Extended**, implemented
 - Required permission: `JobCancel`
 - Idempotency: Natural
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`, `JOB_NOT_CANCELLABLE`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`, `JOB_NOT_CANCELLABLE`
 
 <details><summary>Input schema</summary>
 
@@ -9321,7 +9321,7 @@ Authorization roles: Reader ⊂ Author ⊂ Approver ⊂ Admin (see `RolePermissi
 - Classification: **read-only**, phase **Extended**, implemented
 - Required permission: `JobRead`
 - Idempotency: ReadOnly
-- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`
+- Failure codes: `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `AUTH_UNAVAILABLE`, `TENANT_MISMATCH`, `RATE_LIMITED`, `INTERNAL_ERROR`, `JOB_NOT_FOUND`
 
 <details><summary>Input schema</summary>
 

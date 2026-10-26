@@ -11,7 +11,7 @@ namespace AdrMcp.Application.Tools;
 /// </summary>
 public static class ToolCatalog
 {
-    private static readonly string[] Common = { ErrorCodes.ValidationFailed, ErrorCodes.Unauthorized, ErrorCodes.Forbidden, ErrorCodes.TenantMismatch, ErrorCodes.RateLimited, ErrorCodes.Internal };
+    private static readonly string[] Common = { ErrorCodes.ValidationFailed, ErrorCodes.Unauthorized, ErrorCodes.Forbidden, ErrorCodes.AuthUnavailable, ErrorCodes.TenantMismatch, ErrorCodes.RateLimited, ErrorCodes.Internal };
     private static string[] With(params string[] codes) => Common.Concat(codes).Distinct().ToArray();
 
     public static readonly IReadOnlyList<ToolDefinition> All = new List<ToolDefinition>

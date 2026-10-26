@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows Keep
 ## [Unreleased]
 
 ### Added
+- Entra sign-in, code half of [issue #27](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/issues/27) ([ADR-0008](docs/adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md), Proposed; **off by default**, adr-dev stays on `FunctionKey`): with `Auth__Entra__ValidateBearerToken=true` (needs `Auth__Mode=EntraBuiltIn`) the app verifies the `Authorization` bearer token on every tool call itself, in addition to App Service Authentication at the edge, and builds the principal only from the verified token (`X-MS-CLIENT-PRINCIPAL` is no longer read). RS256 only, key chosen by `kid` from a cached tenant key set, exact v2.0 issuer, `tid`, audience = the server app's client ID, token version 2.0, both `exp` and `nbf`, an allowed client application (`azp`), the `user_impersonation` scope, and a mapped ADR app role. Signing keys that cannot be fetched give a retryable `AUTH_UNAVAILABLE` (HTTP 503), never acceptance. Logs carry a fixed reason code only. Signature and claim checks use `Microsoft.IdentityModel.JsonWebTokens` 8.23.0.
+- `GET /.well-known/oauth-protected-resource` (and the path-inserted `/runtime/webhooks/mcp` form): protected resource metadata (RFC 9728) for MCP clients, as the MCP authorization spec revision 2026-07-28 requires. `GET /api/auth/check`: the same token checks with the spec's `WWW-Authenticate` challenges (401, 403, 503 with `Retry-After`) so the policy can be proven with `curl`. Both answer 404 while the switch is off.
+- Bicep parameters `entraValidateInApp` (default `false`) and `entraResourceUri`, azd variables `ADR_ENTRA_VALIDATE_IN_APP` and `ADR_ENTRA_RESOURCE_URI`, passed through the deploy job.
+- `scripts/entra/` holds the app roles, the delegated scope and the Azure CLI pre-authorization the runbook creates; `EntraDefinitionTests` fails if a role value equals the scope value (Entra keeps both in one collection) or if the files, the code defaults and Bicep drift apart.
+- [Entra sign-in](docs/11-entra-sign-in.md): settings, reason codes, what is and is not verified, and a PowerShell real-tenant runbook. Nothing in it has been run against a tenant.
 - `adr_import` tool (Approver): loads existing decisions in their current lifecycle status, keeping their ids and original decision dates. Never overwrites (same content is `unchanged`, different content is `conflict`), supports `dryRun`, 25 records per call, original Markdown kept as the source of record, provenance `adr_import`. New permission `AdrImport` (Approver, Admin).
 - `tools/AdrMcp.Import`: `scan` reads a folder of ADR Markdown files and writes a staging folder with a data-quality report, `overrides.json` for human decisions and `overrides.suggested.json`; `load` sends the staged records through `adr_import`. See [Importing existing ADRs](docs/10-legacy-adr-import.md).
 - ADR Markdown parser reads the Tyree and Akerman layout and the older HCW layouts: leading metadata table (ID, Status, Author, Reviewed By, Date), numbered headings, options tables, a `## Status` section, "Superseded by" status text, assumptions and constraints (kept in the context).
@@ -12,6 +17,8 @@ All notable changes to this project are documented here. The format follows Keep
 
 ### Changed
 - Markdown parsing no longer treats lines inside code fences as headings or metadata.
+- `AUTH_UNAVAILABLE` (retryable) is a new failure code in every tool's contract (`docs/03-mcp-contracts.md`). It is returned only when in-app token validation is on and the signing keys cannot be fetched.
+- `host.json` sets `extensions.http.routePrefix` to `""` so the well-known address can be served at the root. The health function now declares `api/health`, so `/api/health` does not move; any future HTTP function must give its full route.
 
 ## [0.2.0] - 2026-10-20
 

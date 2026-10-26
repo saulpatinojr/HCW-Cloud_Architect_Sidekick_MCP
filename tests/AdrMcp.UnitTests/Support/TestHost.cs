@@ -27,7 +27,7 @@ public sealed class TestHost
     public InMemoryFindingRepository Findings => (InMemoryFindingRepository)Services.GetRequiredService<IFindingRepository>();
     public InMemoryDocumentStore Store => Services.GetRequiredService<InMemoryDocumentStore>();
 
-    public TestHost(Action<Dictionary<string, string?>>? configure = null)
+    public TestHost(Action<Dictionary<string, string?>>? configure = null, Action<IServiceCollection>? configureServices = null)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -54,6 +54,7 @@ public sealed class TestHost
         services.AddSingleton<IJobHandler, TechnologyRefreshJobHandler>();
         services.AddSingleton<IJobHandler, DriftScanJobHandler>();
         services.AddSingleton<IJobHandler, ContradictionScanJobHandler>();
+        configureServices?.Invoke(services);   // last registration wins: tests swap the clock or the signing-key provider here
         Services = services.BuildServiceProvider();
     }
 

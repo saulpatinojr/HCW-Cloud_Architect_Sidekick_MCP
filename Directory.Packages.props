@@ -24,6 +24,9 @@
     <!-- Required explicitly by the Cosmos SDK; pinned to a version without known CVEs (CVE-2024-21907 affects < 13.0.1). We serialize with System.Text.Json. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="Microsoft.Extensions.Azure" Version="1.14.1" />
+    <!-- Bearer token validation (ADR-0008). Exact versions on purpose: this is the signature and claim check. Latest stable on nuget.org, 2026-10-25. -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.23.0" />
     <!-- Microsoft.Extensions -->
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />

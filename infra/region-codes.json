@@ -1,0 +1,18 @@
+{
+  "australiaeast": "aue",
+  "canadacentral": "cac",
+  "centralus": "cus",
+  "eastus": "eus",
+  "eastus2": "eus2",
+  "francecentral": "frc",
+  "northcentralus": "ncus",
+  "northeurope": "neu",
+  "southcentralus": "scus",
+  "uksouth": "uks",
+  "ukwest": "ukw",
+  "westcentralus": "wcus",
+  "westeurope": "weu",
+  "westus": "wus",
+  "westus2": "wus2",
+  "westus3": "wus3"
+}

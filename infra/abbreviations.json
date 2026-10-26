@@ -1,12 +1,14 @@
 {
-  "resourcesResourceGroups": "rg-",
-  "managedIdentityUserAssignedIdentities": "id-",
-  "operationalInsightsWorkspaces": "log-",
-  "insightsComponents": "appi-",
+  "resourcesResourceGroups": "rg",
+  "managedIdentityUserAssignedIdentities": "id",
+  "operationalInsightsWorkspaces": "log",
+  "insightsComponents": "appi",
   "storageStorageAccounts": "st",
-  "documentDBDatabaseAccounts": "cosmos-",
-  "keyVaultVaults": "kv-",
-  "webSitesFunctions": "func-",
-  "webServerFarms": "plan-",
-  "networkVirtualNetworks": "vnet-"
+  "documentDBDatabaseAccounts": "cosno",
+  "keyVaultVaults": "kv",
+  "webSitesFunctions": "func",
+  "webServerFarms": "asp",
+  "networkVirtualNetworks": "vnet",
+  "networkVirtualNetworksSubnets": "snet",
+  "networkPrivateEndpoints": "pep"
 }

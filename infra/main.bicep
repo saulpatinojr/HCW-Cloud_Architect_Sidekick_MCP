@@ -2,18 +2,33 @@
 // Creates: resource group, user-assigned identity, storage (blob + queue), Cosmos DB (serverless NoSQL),
 // Key Vault, Log Analytics + Application Insights, Flex Consumption Function App, RBAC.
 // No secrets are emitted: every data-plane connection uses managed identity.
+// Names and tags follow ADR-0009 (docs/adr/ADR-0009-azure-naming-convention.md): <abbr>-<workload>-<environment>-<region>-<nn>.
 targetScope = 'subscription'
 
 @minLength(1)
 @maxLength(64)
-@description('Name of the azd environment; used to derive resource names.')
+@description('Name of the azd environment (for example adr-dev). Used for azd bookkeeping, the GitHub environment and the azd-env-name tag; it is NOT part of the resource names (see workloadName and environmentShort).')
 param environmentName string
 
 @minLength(1)
-@description('Primary Azure region (must support Flex Consumption).')
+@description('Primary Azure region (must support Flex Consumption and be listed in region-codes.json).')
 param location string
 
-@description('Optional resource group name override.')
+@minLength(2)
+@maxLength(8)
+@description('Short workload name used in every resource name: lower-case letters and digits only (ADR-0009).')
+param workloadName string = 'adr'
+
+@minLength(2)
+@maxLength(5)
+@description('Short environment name used in every resource name, for example dev, test or prod: lower-case letters and digits only (ADR-0009). Separate from environmentName so the azd and GitHub environment name can stay as it is.')
+param environmentShort string = 'dev'
+
+@maxLength(4)
+@description('Optional text appended to the four globally unique names (function app, Cosmos DB account, Key Vault, storage account): lower-case letters and digits only. Leave empty. Set it, for example to "b", only when one of those names is already taken, such as a Key Vault that is still soft-deleted (ADR-0009).')
+param nameSuffix string = ''
+
+@description('Optional resource group name override. Empty means the convention name, for example rg-adr-dev-scus-01.')
 param resourceGroupName string = ''
 
 @description('Authentication mode for the MCP server: FunctionKey (default, mcp_extension system key) or EntraBuiltIn (App Service Authentication with Entra ID, preview; requires entraClientId).')
@@ -61,13 +76,67 @@ param functionsDotnetVersion string = '10.0'
 @maxValue(1000)
 param maximumInstanceCount int = 100
 
+// ---- Naming (ADR-0009) --------------------------------------------------------------------------------------------------
+// Pattern: <abbreviation>-<workload>[-<component>]-<environment>-<region code>-<instance>, for example kv-adr-dev-scus-01.
+// The storage account name allows lower-case letters and digits only, so it has no hyphens: stadrdevscus01.
 var abbrs = loadJsonContent('./abbreviations.json')
-var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
-var tags = { 'azd-env-name': environmentName, workload: 'adr-mcp' }
-var rgName = !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}${environmentName}'
+var regionCodes = loadJsonContent('./region-codes.json')
+var regionKey = toLower(replace(location, ' ', ''))
+var regionCode = regionCodes[?regionKey] ?? ''
+var instance = '01'
+var nameTail = '${environmentShort}-${regionCode}-${instance}'
+var baseName = '${workloadName}-${nameTail}'
+
+// The four names that must be unique across all of Azure (they become public host names or DNS names) take the optional suffix.
+var keyVaultName = '${abbrs.keyVaultVaults}-${baseName}${nameSuffix}'
+var storageAccountName = '${abbrs.storageStorageAccounts}${workloadName}${environmentShort}${regionCode}${instance}${nameSuffix}'
+var cosmosAccountName = '${abbrs.documentDBDatabaseAccounts}-${baseName}${nameSuffix}'
+var functionAppName = '${abbrs.webSitesFunctions}-${baseName}${nameSuffix}'
+
+// Stop before anything is created, with a message that says what to change. Azure would otherwise reject the name part-way through the deployment.
+// The Key Vault limit (24 characters) is the tightest of the four global names: the storage account (24) and the function app (32, the host ID rule)
+// fit whenever the vault name fits. The unit test ResourceNamingTests checks all three for every region.
+func isLowerAlphanumeric(value string) bool => empty(filter(map(range(0, length(value)), i => substring(value, i, 1)), c => !contains('abcdefghijklmnopqrstuvwxyz0123456789', c)))
+
+var nameProblem = empty(regionCode)
+  ? 'Region "${location}" has no short code. Add it to infra/region-codes.json and to the region table in docs/adr/ADR-0009-azure-naming-convention.md, then deploy again.'
+  : !(isLowerAlphanumeric(workloadName) && isLowerAlphanumeric(environmentShort) && isLowerAlphanumeric(nameSuffix))
+    ? 'workloadName, environmentShort and nameSuffix may hold lower-case letters and digits only (ADR-0009).'
+    : length(keyVaultName) > 24
+      ? 'The Key Vault name ${keyVaultName} is longer than the 24 characters Azure allows. Shorten workloadName, environmentShort or nameSuffix.'
+      : ''
+
+var names = !empty(nameProblem)
+  ? fail(nameProblem)
+  : {
+    resourceGroup: !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}-${baseName}'
+    identity: '${abbrs.managedIdentityUserAssignedIdentities}-${baseName}'
+    logAnalytics: '${abbrs.operationalInsightsWorkspaces}-${baseName}'
+    applicationInsights: '${abbrs.insightsComponents}-${baseName}'
+    appServicePlan: '${abbrs.webServerFarms}-${baseName}'
+    functionApp: functionAppName
+    cosmosAccount: cosmosAccountName
+    keyVault: keyVaultName
+    storageAccount: storageAccountName
+    virtualNetwork: '${abbrs.networkVirtualNetworks}-${baseName}'
+    appSubnet: '${abbrs.networkVirtualNetworksSubnets}-${workloadName}-app-${nameTail}'
+    privateEndpointSubnet: '${abbrs.networkVirtualNetworksSubnets}-${workloadName}-pep-${nameTail}'
+    cosmosPrivateEndpoint: '${abbrs.networkPrivateEndpoints}-${workloadName}-cosmos-${nameTail}'
+    keyVaultPrivateEndpoint: '${abbrs.networkPrivateEndpoints}-${workloadName}-kv-${nameTail}'
+    blobPrivateEndpoint: '${abbrs.networkPrivateEndpoints}-${workloadName}-blob-${nameTail}'
+    queuePrivateEndpoint: '${abbrs.networkPrivateEndpoints}-${workloadName}-queue-${nameTail}'
+  }
+
+// Tags (ADR-0009). 'component' is added per module below. 'azd-env-name' stays: azd needs it to find the environment's resources.
+var tags = {
+  'azd-env-name': environmentName
+  workload: workloadName
+  application: 'adr-mcp'
+  environment: environmentShort
+}
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: rgName
+  name: names.resourceGroup
   location: location
   tags: tags
 }
@@ -75,36 +144,45 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 module identity './modules/identity.bicep' = {
   name: 'identity'
   scope: rg
-  params: { name: '${abbrs.managedIdentityUserAssignedIdentities}adr-${resourceToken}', location: location, tags: tags }
+  params: { name: names.identity, location: location, tags: union(tags, { component: 'security' }) }
 }
 
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring'
   scope: rg
   params: {
-    logAnalyticsName: '${abbrs.operationalInsightsWorkspaces}adr-${resourceToken}'
-    applicationInsightsName: '${abbrs.insightsComponents}adr-${resourceToken}'
+    logAnalyticsName: names.logAnalytics
+    applicationInsightsName: names.applicationInsights
     location: location
-    tags: tags
+    tags: union(tags, { component: 'monitoring' })
   }
 }
 
 module network './modules/network.bicep' = if (enablePrivateNetworking) {
   name: 'network'
   scope: rg
-  params: { name: '${abbrs.networkVirtualNetworks}adr-${resourceToken}', location: location, tags: tags }
+  params: {
+    name: names.virtualNetwork
+    appSubnetName: names.appSubnet
+    privateEndpointSubnetName: names.privateEndpointSubnet
+    location: location
+    tags: union(tags, { component: 'network' })
+  }
 }
 
 module storage './modules/storage.bicep' = {
   name: 'storage'
   scope: rg
   params: {
-    name: '${abbrs.storageStorageAccounts}adr${resourceToken}'
+    name: names.storageAccount
+    blobPrivateEndpointName: names.blobPrivateEndpoint
+    queuePrivateEndpointName: names.queuePrivateEndpoint
     location: location
-    tags: tags
+    tags: union(tags, { component: 'data' })
     enablePrivateNetworking: enablePrivateNetworking
     privateEndpointSubnetId: enablePrivateNetworking ? network.?outputs.privateEndpointSubnetId ?? '' : ''
     vnetId: enablePrivateNetworking ? network.?outputs.vnetId ?? '' : ''
+    vnetName: names.virtualNetwork
     enableDefenderForStorage: enableDefenderForStorage
     jobsQueueName: 'analysis-jobs'
     blobContainers: [ 'adr-source', 'uploads-quarantine', 'evidence', 'evidence-sanitized', 'reports', 'snapshots', 'manifests', 'diagrams', 'deployment' ]
@@ -115,14 +193,16 @@ module cosmos './modules/cosmos.bicep' = {
   name: 'cosmos'
   scope: rg
   params: {
-    name: '${abbrs.documentDBDatabaseAccounts}adr-${resourceToken}'
+    name: names.cosmosAccount
+    privateEndpointName: names.cosmosPrivateEndpoint
     location: location
-    tags: tags
+    tags: union(tags, { component: 'data' })
     databaseName: 'adr'
     consistency: cosmosConsistency
     enablePrivateNetworking: enablePrivateNetworking
     privateEndpointSubnetId: enablePrivateNetworking ? network.?outputs.privateEndpointSubnetId ?? '' : ''
     vnetId: enablePrivateNetworking ? network.?outputs.vnetId ?? '' : ''
+    vnetName: names.virtualNetwork
   }
 }
 
@@ -130,12 +210,14 @@ module keyVault './modules/keyvault.bicep' = {
   name: 'keyvault'
   scope: rg
   params: {
-    name: '${abbrs.keyVaultVaults}adr-${resourceToken}'
+    name: names.keyVault
+    privateEndpointName: names.keyVaultPrivateEndpoint
     location: location
-    tags: tags
+    tags: union(tags, { component: 'security' })
     enablePrivateNetworking: enablePrivateNetworking
     privateEndpointSubnetId: enablePrivateNetworking ? network.?outputs.privateEndpointSubnetId ?? '' : ''
     vnetId: enablePrivateNetworking ? network.?outputs.vnetId ?? '' : ''
+    vnetName: names.virtualNetwork
   }
 }
 
@@ -143,10 +225,10 @@ module functionApp './modules/functionapp.bicep' = {
   name: 'functionapp'
   scope: rg
   params: {
-    name: '${abbrs.webSitesFunctions}adr-${resourceToken}'
-    planName: '${abbrs.webServerFarms}adr-${resourceToken}'
+    name: names.functionApp
+    planName: names.appServicePlan
     location: location
-    tags: tags
+    tags: union(tags, { component: 'api' })
     identityId: identity.outputs.id
     identityClientId: identity.outputs.clientId
     storageAccountName: storage.outputs.name

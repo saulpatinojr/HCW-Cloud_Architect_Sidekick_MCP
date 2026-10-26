@@ -6,6 +6,10 @@ param jobsQueueName string
 param enablePrivateNetworking bool
 param privateEndpointSubnetId string
 param vnetId string
+param vnetName string
+@description('Names of the blob and queue private endpoints (ADR-0009), built in main.bicep.')
+param blobPrivateEndpointName string
+param queuePrivateEndpointName string
 param enableDefenderForStorage bool
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -116,12 +120,12 @@ resource defender 'Microsoft.Security/defenderForStorageSettings@2022-12-01-prev
 
 module blobPe './private-endpoint.bicep' = if (enablePrivateNetworking) {
   name: '${name}-blob-pe'
-  params: { name: 'pe-${name}-blob', location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, targetResourceId: storage.id, groupId: 'blob', dnsZoneName: 'privatelink.blob.${environment().suffixes.storage}' }
+  params: { name: blobPrivateEndpointName, location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, vnetName: vnetName, targetResourceId: storage.id, groupId: 'blob', dnsZoneName: 'privatelink.blob.${environment().suffixes.storage}' }
 }
 
 module queuePe './private-endpoint.bicep' = if (enablePrivateNetworking) {
   name: '${name}-queue-pe'
-  params: { name: 'pe-${name}-queue', location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, targetResourceId: storage.id, groupId: 'queue', dnsZoneName: 'privatelink.queue.${environment().suffixes.storage}' }
+  params: { name: queuePrivateEndpointName, location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, vnetName: vnetName, targetResourceId: storage.id, groupId: 'queue', dnsZoneName: 'privatelink.queue.${environment().suffixes.storage}' }
 }
 
 output name string = storage.name

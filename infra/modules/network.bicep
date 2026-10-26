@@ -1,4 +1,7 @@
 param name string
+@description('Subnet names (ADR-0009), built in main.bicep.')
+param appSubnetName string
+param privateEndpointSubnetName string
 param location string
 param tags object
 
@@ -10,14 +13,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
     addressSpace: { addressPrefixes: [ '10.40.0.0/16' ] }
     subnets: [
       {
-        name: 'app'
+        name: appSubnetName
         properties: {
           addressPrefix: '10.40.1.0/24'
           delegations: [ { name: 'flex', properties: { serviceName: 'Microsoft.App/environments' } } ]
         }
       }
       {
-        name: 'private-endpoints'
+        name: privateEndpointSubnetName
         properties: { addressPrefix: '10.40.2.0/24' }
       }
     ]

@@ -23,7 +23,7 @@ public class PrincipalHashSaltValidationTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(PrincipalHashSaltValidator.DefaultPlaceholder)]
-    [InlineData("@Microsoft.KeyVault(VaultName=kv-adr;SecretName=principal-hash-salt)")]
+    [InlineData("@Microsoft.KeyVault(VaultName=kv-adr-dev-scus-01;SecretName=principal-hash-salt)")]   // an unresolved reference as App Service leaves it; the vault is the one infra/main.bicep builds (ADR-0009)
     [InlineData("short-but-not-default")]
     public void Durable_persistence_rejects_placeholder_unresolved_or_weak_salts(string salt)
     {

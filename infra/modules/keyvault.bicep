@@ -4,6 +4,9 @@ param tags object
 param enablePrivateNetworking bool
 param privateEndpointSubnetId string
 param vnetId string
+param vnetName string
+@description('Name of the private endpoint (ADR-0009), built in main.bicep.')
+param privateEndpointName string
 
 // Holds the principal-hash salt and any organization-defined sensitive patterns. Values are created out-of-band (azd hook / az cli),
 // never in this template. The Function App reads them via Key Vault references with its managed identity.
@@ -25,7 +28,7 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 
 module kvPe './private-endpoint.bicep' = if (enablePrivateNetworking) {
   name: '${name}-pe'
-  params: { name: 'pe-${name}', location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, targetResourceId: vault.id, groupId: 'vault', dnsZoneName: 'privatelink.vaultcore.azure.net' }
+  params: { name: privateEndpointName, location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, vnetName: vnetName, targetResourceId: vault.id, groupId: 'vault', dnsZoneName: 'privatelink.vaultcore.azure.net' }
 }
 
 output name string = vault.name

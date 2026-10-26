@@ -122,7 +122,7 @@ Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized 
 | Challenge text and the two HTTP functions | `McpChallengeTests.cs`, `AuthEndpointTests.cs` |
 | Settings that stop the host | `EntraTokenOptionsTests.cs` |
 | Role and scope values differ; files, code, Bicep and defaults agree | `EntraDefinitionTests.cs` |
-| The same flow on the real Functions host (Core Tools 4.15.2, .NET 10, Azurite, the MCP webhook set to `Anonymous`, a local key stand-in on loopback): the well-known documents, 401, 403 and 200 from `/api/auth/check`, `Authorization` reaching a tool call, a forged platform header ignored, 503 and `AUTH_UNAVAILABLE` with the key endpoint down and recovery after the backoff, log lines with reason codes only | run by hand on 2026-10-26; not repeated by CI |
+| The same flow on the real Functions host (Core Tools 4.15.2, .NET 10, Azurite, the MCP webhook set to `Anonymous`, a local key stand-in on loopback): the well-known documents, 401, 403 and 200 from `/api/auth/check`, `Authorization` reaching a tool call, a forged platform header ignored, 503 and `AUTH_UNAVAILABLE` with the key endpoint down and recovery after the backoff, log lines with reason codes only | run by hand on 2026-10-26, on the final code except the key-outage case (503, `AUTH_UNAVAILABLE`, recovery), which was run on an earlier commit and is covered by the unit tests on the final code; not repeated by CI |
 
 **NOT verified** (needs your tenant or a deployment):
 

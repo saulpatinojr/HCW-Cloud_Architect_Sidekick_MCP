@@ -209,10 +209,11 @@ public class JwksSigningKeyProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task A_body_over_the_cap_with_no_declared_length_is_refused()
+    public async Task A_body_over_the_cap_with_no_declared_length_is_refused_not_truncated_and_accepted()
     {
+        // The valid key set sits inside the first bytes, so a reader that merely stopped at the cap would still find a key.
         var (provider, handler) = Make();
-        handler.Override = _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new SizedContent(new string(' ', JwksSigningKeyProvider.MaxDocumentBytes + 10) + _idp.Jwks(), null) };
+        handler.Override = _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new SizedContent(_idp.Jwks() + new string(' ', JwksSigningKeyProvider.MaxDocumentBytes + 10), null) };
         Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync(TestIdp.KeyId, default)).Status);
     }
 

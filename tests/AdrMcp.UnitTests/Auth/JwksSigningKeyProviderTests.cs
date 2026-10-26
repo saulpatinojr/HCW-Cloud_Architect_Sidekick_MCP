@@ -249,4 +249,17 @@ public class JwksSigningKeyProviderTests : IDisposable
         handler.Delay = TimeSpan.Zero;
         Assert.Equal(KeyLookupStatus.Found, (await provider.GetKeyAsync("kid-next", default)).Status);
     }
+
+    [Fact]
+    public async Task An_unexpected_defect_in_the_fetch_propagates_and_is_not_remembered_as_a_clean_refresh()
+    {
+        var (provider, handler) = Make();
+        await provider.GetKeyAsync(TestIdp.KeyId, default);
+        _idp.Clock.Advance(JwksSigningKeyProvider.UnknownKeyRefreshInterval + TimeSpan.FromSeconds(1));
+        handler.Override = _ => throw new NotSupportedException("defect, not an outage");
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => provider.GetKeyAsync("unknown-1", default));
+        // Not "unknown key" (401): the refresh never completed, so the honest answer is "cannot tell" (503).
+        Assert.Equal(KeyLookupStatus.Unavailable, (await provider.GetKeyAsync("unknown-2", default)).Status);
+    }
 }

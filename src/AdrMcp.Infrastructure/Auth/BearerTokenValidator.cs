@@ -45,7 +45,7 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
 
         JsonWebToken parsed;
         try { parsed = new JsonWebToken(token); }
-        catch (Exception) { return BearerResult.Fail(BearerFailure.Malformed); }
+        catch (Exception ex) when (IsBadTokenException(ex)) { return BearerResult.Fail(BearerFailure.Malformed); }
 
         // Refuse before any key is touched: "none", HMAC (a public key used as the secret) and every algorithm we do not issue.
         if (!string.Equals(parsed.Alg, RequiredAlgorithm, StringComparison.Ordinal)) return BearerResult.Fail(BearerFailure.UnsupportedAlgorithm);
@@ -73,12 +73,12 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
 
         TokenValidationResult result;
         try { result = await _handler.ValidateTokenAsync(parsed, parameters).ConfigureAwait(false); }
-        catch (Exception) { return BearerResult.Fail(BearerFailure.Malformed); }
+        catch (Exception ex) when (IsBadTokenException(ex)) { return BearerResult.Fail(BearerFailure.Malformed); }
         if (!result.IsValid) return BearerResult.Fail(Classify(result.Exception));
 
         // The token is signed by Entra, but a claim of an odd shape must still be a refusal and never an exception.
         try { return CheckClaims(parsed); }
-        catch (Exception) { return BearerResult.Fail(BearerFailure.Malformed); }
+        catch (Exception ex) when (IsBadTokenException(ex)) { return BearerResult.Fail(BearerFailure.Malformed); }
     }
 
     private BearerResult CheckClaims(JsonWebToken token)
@@ -120,8 +120,16 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
     {
         value = "";
         try { return token.TryGetPayloadValue<string>(claim, out value!) && !string.IsNullOrEmpty(value); }
-        catch (Exception) { return false; }   // a claim of the wrong JSON type counts as missing
+        catch (Exception ex) when (IsBadTokenException(ex)) { return false; }   // a claim of the wrong JSON type counts as missing
     }
+
+    /// <summary>
+    /// The exception types the token library and JSON reading throw for a token or claim that is not what it should be. Anything else is a
+    /// defect, not a bad token, and is left to propagate: a tool call then fails as INTERNAL_ERROR and the sign-in check as 500, never as an accept.
+    /// </summary>
+    private static bool IsBadTokenException(Exception ex)
+        => ex is ArgumentException or FormatException or InvalidOperationException or InvalidCastException or OverflowException or KeyNotFoundException
+            or System.Text.Json.JsonException or SecurityTokenException;
 
     /// <summary>Maps the library's exception type to our reason. Messages are never read: they can echo claim values.</summary>
     private static BearerFailure Classify(Exception? exception) => exception switch

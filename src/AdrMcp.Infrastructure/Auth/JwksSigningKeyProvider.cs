@@ -105,6 +105,11 @@ public sealed class JwksSigningKeyProvider : ISigningKeyProvider, IDisposable
                 _lastAttemptFailed = previousFailed;
                 throw;
             }
+            catch (Exception)
+            {
+                _lastAttemptFailed = true;   // an unexpected defect is not a result either: the next caller must not read "no failure"
+                throw;
+            }
             _lastAttemptFailed = fetched is null;
             if (fetched is null)
             {
@@ -147,8 +152,9 @@ public sealed class JwksSigningKeyProvider : ISigningKeyProvider, IDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { reason = "timeout"; }
         catch (OperationCanceledException) { throw; }
-        catch (HttpRequestException) { reason = "network"; }
-        catch (Exception) { reason = "invalid_document"; }   // deliberately not logged: library messages can echo document content
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { reason = "network"; }
+        // Not logged: library messages can echo document content. Any other exception is a defect and is left to propagate (fail closed).
+        catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidOperationException or System.Text.Json.JsonException or SecurityTokenException) { reason = "invalid_document"; }
         _logger.LogWarning("Signing key refresh failed ({Reason})", reason);
         return null;
     }

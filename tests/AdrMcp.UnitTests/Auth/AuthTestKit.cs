@@ -79,7 +79,7 @@ public sealed class TestIdp : IDisposable
     /// <summary>The key set document Entra would publish for this tenant (public parts only).</summary>
     public string Jwks(params (string Kid, RSA Key, string? Issuer)[] keys)
     {
-        var list = keys.Length == 0 ? new[] { (KeyId, Key, (string?)null) } : keys;
+        (string Kid, RSA Key, string? Issuer)[] list = keys.Length == 0 ? new (string, RSA, string?)[] { (KeyId, Key, null) } : keys;
         var array = new JsonArray();
         foreach (var (kid, key, issuer) in list)
         {

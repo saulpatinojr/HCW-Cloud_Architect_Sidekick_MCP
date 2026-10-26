@@ -136,7 +136,7 @@ Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized 
 
 ## Real-tenant verification runbook
 
-Run this once in a **sandbox tenant**, before turning anything on for a client. It creates one app registration in Entra and runs the app on your machine. Nothing here is run by CI or by an agent. The commands are PowerShell (7 or Windows PowerShell 5.1). You need the Azure CLI, .NET 10, Azure Functions Core Tools 4, Azurite (`npm install -g azurite`), Python 3, and an account that can create applications in the sandbox tenant. Every step starts from the folder you cloned this repository into: `Test-Path scripts/entra/app-roles.json` must print `True`. Each block re-reads the values it needs, so you can paste it into a fresh window.
+Run this once in a **sandbox tenant**, before turning anything on for a client. It creates one app registration in Entra and runs the app on your machine. Nothing here is run by CI or by an agent. The commands are PowerShell (7 or Windows PowerShell 5.1). You need the Azure CLI, .NET 10, Azure Functions Core Tools 4, Azurite (`npm install -g azurite`), Python 3, and an account in the sandbox tenant that can create applications and assign app roles. Microsoft Learn lists Application Administrator and Cloud Application Administrator among the Entra roles supported for the app-role assignment call in step 1 ([Grant an appRoleAssignment for a service principal](https://learn.microsoft.com/graph/api/serviceprincipal-post-approleassignedto)); the permissions behind it are `AppRoleAssignment.ReadWrite.All` and `Application.Read.All`. If your account lacks them, run step 1 up to `az ad sp update` and ask an administrator to do the final assignment. Every step starts from the folder you cloned this repository into: `Test-Path scripts/entra/app-roles.json` must print `True`. Each block re-reads the values it needs, so you can paste it into a fresh window.
 
 1. Create the Entra objects (owner step, sandbox only). This makes a single-tenant app with v2 tokens, the four app roles and the `user_impersonation` scope from `scripts/entra/`, pre-authorizes the Azure CLI (a public application ID; do this only in a sandbox), requires assignment, and assigns **you** as `Adr.Admin`:
 
@@ -179,11 +179,11 @@ if (@($roles | Where-Object { $scopes -contains $_ }).Count) { 'FAIL: a role val
 
    Expect `Adr.Reader, Adr.Author, Adr.Approver, Adr.Admin`, scope `user_impersonation`, token version `2`, `assignment required: true` and the PASS line.
 
-4. Start the app on your machine with the in-app check on (needs two more PowerShell windows opened in the repository folder). This block writes `src/AdrMcp.Functions/local.settings.json` (git-ignored) from the example. `WEBSITE_AUTH_ENABLED` is set only because the health probe reports unavailable without a platform in front; never set it as an app setting in Azure (a test guards `infra/`):
+4. Start the app on your machine with the in-app check on (needs two more PowerShell windows opened in the repository folder). This block writes `src/AdrMcp.Functions/local.settings.json` (git-ignored) from the example; if you already have that file it is first saved as `local.settings.json.bak` and put back in step 8. `WEBSITE_AUTH_ENABLED` is set only because the health probe reports unavailable without a platform in front; never set it as an app setting in Azure (a test guards `infra/`):
 
 ```powershell
 $tenant = az account show --query tenantId -o tsv; $app = az ad app list --display-name 'ADR MCP server (sandbox)' --query '[0].appId' -o tsv
-$f = 'src/AdrMcp.Functions/local.settings.json'; Copy-Item 'src/AdrMcp.Functions/local.settings.json.example' $f -Force; $j = Get-Content $f -Raw | ConvertFrom-Json
+$f = 'src/AdrMcp.Functions/local.settings.json'; if ((Test-Path $f) -and -not (Test-Path "$f.bak") -and -not (Select-String -Path $f -Pattern 'Auth__Entra__ValidateBearerToken' -Quiet)) { Copy-Item $f "$f.bak" }; Copy-Item 'src/AdrMcp.Functions/local.settings.json.example' $f -Force; $j = Get-Content $f -Raw | ConvertFrom-Json
 $set = [ordered]@{ Auth__Mode = 'EntraBuiltIn'; WEBSITE_AUTH_ENABLED = 'true'; Auth__Tenants__0__Id = $tenant; Auth__Entra__ValidateBearerToken = 'true'; Auth__Entra__TenantId = $tenant; Auth__Entra__ClientId = $app; Auth__Entra__AllowedClientIds__0 = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'; Auth__Entra__ResourceUri = 'http://localhost:7071/runtime/webhooks/mcp'; AzureFunctionsJobHost__extensions__mcp__system__webhookAuthorizationLevel = 'Anonymous' }
 foreach ($k in $set.Keys) { $j.Values | Add-Member -NotePropertyName $k -NotePropertyValue $set[$k] -Force }
 $j | ConvertTo-Json -Depth 5 | Set-Content $f; 'settings written'
@@ -224,7 +224,7 @@ $env:ADR_MCP_BEARER = $good; python scripts/smoke-test.py --url "$base/runtime/w
 
 ```powershell
 $app = az ad app list --display-name 'ADR MCP server (sandbox)' --query '[0].appId' -o tsv; az ad app delete --id $app
-Copy-Item 'src/AdrMcp.Functions/local.settings.json.example' 'src/AdrMcp.Functions/local.settings.json' -Force; Remove-Item -Recurse -Force .azurite -ErrorAction SilentlyContinue
+$f = 'src/AdrMcp.Functions/local.settings.json'; if (Test-Path "$f.bak") { Move-Item "$f.bak" $f -Force } else { Remove-Item $f -ErrorAction SilentlyContinue }; Remove-Item -Recurse -Force .azurite -ErrorAction SilentlyContinue
 ```
 
 If any line differs from what is written, do not turn sign-in on for a client. Open an issue with the step and line number and the status code only; never paste a token, a tenant ID or an application ID.

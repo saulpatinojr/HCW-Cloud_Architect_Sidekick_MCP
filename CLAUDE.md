@@ -50,6 +50,7 @@ bicep build infra/main.bicep --stdout > /dev/null && bicep lint infra/main.bicep
 - C# 12, file-scoped namespaces, nullable enabled (nullable warnings are errors), records for immutable data, `AppJson.Options` for all JSON.
 - Add a technology detector by implementing `ITechnologyDetector`; a drift check by implementing `IDriftDetector`; a contradiction rule by `IContradictionRule`; a safety rule by `ISafetyReviewRule`. Register in `AdrMcp.Analysis/ServiceCollectionExtensions.cs`. Nothing else changes.
 - Keep tool outputs compact (summaries, truncated excerpts) to protect the client context window.
+- Azure names and tags follow [ADR-0009](docs/adr/ADR-0009-azure-naming-convention.md): `<abbreviation>-<workload>-<environment>-<region code>-<nn>`, abbreviations from Microsoft's published list in `infra/abbreviations.json`, region codes in `infra/region-codes.json`. Build every name in `infra/main.bicep`, never inside a module. After touching `infra/`, run `dotnet test tests/AdrMcp.UnitTests --filter ResourceNamingTests` (needs `az bicep install`).
 - Commit messages: imperative, scoped (`analysis: add helm values detector`). Do not commit `local.settings.json`, `.azure/`, `dist/`.
 
 ## Agents

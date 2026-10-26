@@ -4,7 +4,7 @@ No time estimates by design. Each phase lists features, dependencies, acceptance
 
 ## Phase 1 — MVP (this repository)
 
-**Features.** 27 implemented tools incl. the required 15 MVP tools; Cosmos + Blob persistence; version history and snapshots; ETag concurrency; human-owned field protection with proposal workflow; deterministic content safety; tenant/workspace isolation; audit + decision memory; 8 technology detectors; 3 drift detectors; 7 contradiction rules; 12 safety-review rules; queue-based jobs; Bicep + azd; CI/CD with OIDC; Claude Code and Claude custom-connector instructions.
+**Features.** 28 implemented tools incl. all the required MVP tools (the list is the overview table in docs/03); Cosmos + Blob persistence; version history and snapshots; ETag concurrency; human-owned field protection with proposal workflow; deterministic content safety; tenant/workspace isolation; audit + decision memory; 8 technology detectors; 3 drift detectors; 7 contradiction rules; 12 safety-review rules; queue-based jobs; Bicep + azd; CI/CD with OIDC; Claude Code and Claude custom-connector instructions.
 
 **Dependencies.** Azure subscription with Flex Consumption region; Entra app roles (for Entra mode); Core Tools ≥ 4.0.7030.
 
@@ -16,7 +16,7 @@ No time estimates by design. Each phase lists features, dependencies, acceptance
 
 ## Phase 2 — Production hardening
 
-**Features.** Built-in Entra auth as default with pre-authorized Claude clients; private endpoints + Front Door/APIM with per-client rate limiting and WAF; mandatory audit (fail call on audit failure); Defender for Storage malware verdict required; archive expansion job with zip-bomb limits; PDF/image text extraction (Document Intelligence) behind `IContentSafetyService`; Azure AI Content Safety Prompt Shields + Language PII as additional **labelled** detectors; Durable Functions for multi-step imports; alerting on drift status changes (Event Grid → Teams/email); .NET 10 upgrade; load tests; chaos tests for queue poison paths; SBOM generation.
+**Features.** Built-in Entra auth as default with pre-authorized Claude clients; private endpoints + Front Door/APIM with per-client rate limiting and WAF; mandatory audit (fail call on audit failure); Defender for Storage malware verdict required; archive expansion job with zip-bomb limits; PDF/image text extraction (Document Intelligence) behind `IContentSafetyService`; Azure AI Content Safety Prompt Shields + Language PII as additional **labelled** detectors; Durable Functions for multi-step imports; alerting on drift status changes (Event Grid → Teams/email); load tests; chaos tests for queue poison paths; SBOM generation.
 
 **Dependencies.** Identity team for app registrations and consent; network team for VNet/DNS; Defender plan; Content Safety resource.
 

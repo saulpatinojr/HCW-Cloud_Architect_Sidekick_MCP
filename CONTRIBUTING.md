@@ -21,7 +21,7 @@ Run the server locally with Azurite and `func start` as described in `docs/05-lo
 ## Pull requests
 1. Branch from `main` (`feature/<topic>` or `fix/<topic>`).
 2. Keep PRs focused; include tests for behaviour changes.
-3. Run `dotnet build -c Release` (no warnings), `dotnet test`, and `bicep build`/`bicep lint` for infra changes.
+3. Run `dotnet build -c Release` (no warnings), `dotnet test`, and `bicep build`/`bicep lint` for infra changes (`dotnet test` includes the resource-naming tests of ADR-0009, which need `az bicep install`).
 4. If you touched tools, regenerate `docs/03-mcp-contracts.md` (`dotnet run --project tools/AdrMcp.DocGen -- docs/03-mcp-contracts.md`).
 5. Fill in the PR template; changes under `src/AdrMcp.Infrastructure`, `src/AdrMcp.Analysis/Safety`, `src/AdrMcp.Application/Tools` or `infra/` need a security review from CODEOWNERS.
 6. Never include secrets, SAS URLs, connection strings or real personal data in code, tests, fixtures or screenshots.

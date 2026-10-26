@@ -11,7 +11,6 @@
 [![Azure Functions](https://img.shields.io/badge/Azure%20Functions-Flex%20Consumption-0078D4?logo=azurefunctions&logoColor=white)](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-000000)](https://modelcontextprotocol.io/)
 [![Bicep](https://img.shields.io/badge/IaC-Bicep-0078D4)](infra/)
-[![Tests](https://img.shields.io/badge/tests-124%20unit%20%2B%207%20integration-brightgreen)](docs/07-tests-and-ci.md)
 [![Security policy](https://img.shields.io/badge/security-policy-important)](.github/SECURITY.md)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
@@ -84,11 +83,11 @@ The example settings use in-memory persistence, so only Azurite is needed locall
 ```bash
 azd auth login
 azd init -e adr-dev
-azd env set AZURE_LOCATION eastus2        # any Flex Consumption region
+azd env set AZURE_LOCATION eastus2        # one of the 16 regions in infra/region-codes.json
 azd up                                    # Bicep provision + deploy
 ```
 
-`azd up` creates: resource group, user-assigned identity, Storage (blob + queue, shared keys disabled), Cosmos DB serverless, Key Vault, Log Analytics + Application Insights, the Flex Consumption Function App, and least-privilege role assignments. Optional flags: `ADR_AUTH_MODE=EntraBuiltIn`, `ADR_PRIVATE_NETWORKING=true`, `ADR_DEFENDER_STORAGE=true`.
+`azd up` creates: resource group, user-assigned identity, Storage (blob + queue, shared keys disabled), Cosmos DB serverless, Key Vault, Log Analytics + Application Insights, the Flex Consumption Function App, and least-privilege role assignments. Every name follows one convention, `<abbreviation>-<workload>-<environment>-<region code>-<nn>` (for `southcentralus`: `rg-adr-dev-scus-01`, `func-adr-dev-scus-01`, `kv-adr-dev-scus-01`, `stadrdevscus01`), see [ADR-0009](docs/adr/ADR-0009-azure-naming-convention.md). Optional flags: `ADR_AUTH_MODE=EntraBuiltIn`, `ADR_PRIVATE_NETWORKING=true`, `ADR_DEFENDER_STORAGE=true`, and `ADR_NAME_SUFFIX=<letters or digits>` only when a globally unique name is already taken.
 
 Post-deploy check (the key is read from Azure at run time and never stored in the repo):
 
@@ -190,10 +189,12 @@ Full details and the STRIDE table: [Security & threat model](docs/04-security-th
 | J/K | [Tests & CI/CD](docs/07-tests-and-ci.md) |
 | L | [Roadmap](docs/08-roadmap.md) |
 | — | [Fitness functions, memory, async jobs](docs/09-fitness-functions-and-memory.md) |
+| — | [Importing existing ADRs](docs/10-legacy-adr-import.md) |
+| — | [Entra sign-in](docs/11-entra-sign-in.md) |
 
 ## Project status
 
-Verified in this repository: clean Release build, 124 unit tests and 6 of 7 integration tests passing (the Cosmos DB test is skipped unless `ADR_TEST_COSMOS_ENDPOINT` or `ADR_TEST_COSMOS_CONNECTION_STRING` is set), Bicep builds without warnings, and an end-to-end MCP smoke test against the real local Functions host. Items marked **[VERIFY]** in the docs (preview features, external redirect URIs, API versions) and **[REVIEW REQUIRED]** (identity setup) should be checked by a human before production use.
+Verified in this repository: clean Release build, all unit tests and 6 of 7 integration tests passing (the Cosmos DB test is skipped unless `ADR_TEST_COSMOS_ENDPOINT` or `ADR_TEST_COSMOS_CONNECTION_STRING` is set), Bicep builds without warnings, and an end-to-end MCP smoke test against the real local Functions host. Items marked **[VERIFY]** in the docs (preview features, external redirect URIs, API versions) and **[REVIEW REQUIRED]** (identity setup) should be checked by a human before production use.
 
 ## Contributing & community
 

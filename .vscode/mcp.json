@@ -1,7 +1,7 @@
 {
   "inputs": [
     { "type": "promptString", "id": "adr-functions-key", "description": "ADR MCP server system key (mcp_extension). Leave empty for local.", "password": true },
-    { "type": "promptString", "id": "adr-host", "description": "Function app host, e.g. func-adr-xxxx.azurewebsites.net (or localhost:7071)", "password": false }
+    { "type": "promptString", "id": "adr-host", "description": "Function app host, e.g. func-adr-dev-scus-01.azurewebsites.net (or localhost:7071)", "password": false }
   ],
   "servers": {
     "adr-local": { "type": "http", "url": "http://localhost:7071/runtime/webhooks/mcp" },

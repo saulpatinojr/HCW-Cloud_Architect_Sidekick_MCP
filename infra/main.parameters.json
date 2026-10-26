@@ -4,6 +4,9 @@
   "parameters": {
     "environmentName": { "value": "${AZURE_ENV_NAME}" },
     "location": { "value": "${AZURE_LOCATION}" },
+    "workloadName": { "value": "${ADR_WORKLOAD_NAME=adr}" },
+    "environmentShort": { "value": "${ADR_ENVIRONMENT_SHORT=dev}" },
+    "nameSuffix": { "value": "${ADR_NAME_SUFFIX}" },
     "authMode": { "value": "${ADR_AUTH_MODE=FunctionKey}" },
     "entraClientId": { "value": "${ADR_ENTRA_CLIENT_ID}" },
     "entraTenantId": { "value": "${ADR_ENTRA_TENANT_ID}" },

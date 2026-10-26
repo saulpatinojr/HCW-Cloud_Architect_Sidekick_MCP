@@ -161,7 +161,7 @@ az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/
 
 ```powershell
 $app = az ad app list --display-name 'ADR MCP server (sandbox)' --query '[0].appId' -o tsv
-az ad app update --id $app --identifier-uris "api://$app" 'https://func-adr-sandbox.azurewebsites.net/runtime/webhooks/mcp'
+az ad app update --id $app --identifier-uris "api://$app" 'https://func-adr-test-scus-01.azurewebsites.net/runtime/webhooks/mcp'
 "exit code: $LASTEXITCODE (0 = accepted)"
 ```
 

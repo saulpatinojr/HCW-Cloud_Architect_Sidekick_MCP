@@ -161,6 +161,16 @@ try {
     }
     Write-Host "  region $Location supports Flex Consumption"
 
+    # Resource names carry a short region code (ADR-0009). A region without one passes the check above but stops the deployment later.
+    $codesFile = Join-Path (Join-Path $PSScriptRoot '..') 'infra/region-codes.json'
+    if (Test-Path -LiteralPath $codesFile) {
+        $codedRegions = @((Get-Content -LiteralPath $codesFile -Raw | ConvertFrom-Json).PSObject.Properties.Name)
+        if ($codedRegions -notcontains $Location.ToLowerInvariant()) {
+            throw "$Location has no short code for resource names. Add it to infra/region-codes.json first (docs/adr/ADR-0009-azure-naming-convention.md), or pick one of: $($codedRegions -join ', ')"
+        }
+        Write-Host "  region $Location has a short code for resource names"
+    }
+
     if ($Vars['AZURE_CLIENT_ID']) {
         # The app GitHub already signs in as. Not finding it means the wrong tenant or account, never "create another".
         $AppId = $Vars['AZURE_CLIENT_ID']

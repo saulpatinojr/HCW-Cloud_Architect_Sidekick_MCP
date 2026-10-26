@@ -5,7 +5,7 @@
 ├── AdrMcp.sln
 ├── Directory.Build.props              # net10.0, nullable, nullable warnings as errors, NuGet Audit
 ├── Directory.Packages.props           # central package versions (pinned; verified against nuget.org 2026-10-07)
-├── global.json                        # SDK 8.0.4xx, rollForward latestFeature
+├── global.json                        # SDK 10.0.100, rollForward latestFeature
 ├── azure.yaml                         # Azure Developer CLI service + infra mapping (postprovision hook)
 ├── LICENSE · THIRD-PARTY-NOTICES.md · README.md · .gitignore · .editorconfig
 ├── .github/
@@ -19,7 +19,7 @@
 ├── docs/
 │   ├── 00-source-assessment.md        # A
 │   ├── 01-architecture.md             # B (Mermaid diagrams, trust boundaries, data flow, failure paths)
-│   ├── adr/ADR-0001 … ADR-0006        # C
+│   ├── adr/ADR-0001 … ADR-0009        # C (ADR-0009: Azure naming convention)
 │   ├── 02-repository-structure.md     # D (this file)
 │   ├── 03-mcp-contracts.md            # F (generated from ToolCatalog by tools/AdrMcp.DocGen)
 │   ├── 04-security-threat-model.md    # §17 threat model, §9 content safety, §8 upload policy
@@ -31,7 +31,7 @@
 │   ├── 10-legacy-adr-import.md
 │   └── 11-entra-sign-in.md            # Entra sign-in: settings, reason codes, real-tenant runbook (ADR-0008)
 ├── infra/
-│   ├── main.bicep · main.parameters.json · abbreviations.json
+│   ├── main.bicep · main.parameters.json · abbreviations.json · region-codes.json   # names are built in main.bicep (ADR-0009)
 │   └── modules/{identity,monitoring,network,storage,cosmos,keyvault,functionapp,rbac,private-endpoint}.bicep
 ├── samples/
 │   ├── adrs/*.md                      # sample ADRs with testable claims
@@ -43,6 +43,7 @@
 │   ├── smoke-test.py                  # MCP protocol smoke test (stdlib only)
 │   ├── local-mcp-call.sh              # curl helper for one tool call
 │   ├── postprovision.sh               # azd hook: Key Vault salt secret
+│   ├── setup-adr-deploy.ps1           # one-step deploy setup: OIDC identity, protected environment, repository variables (docs/07)
 │   └── package.sh                     # zips the deliverable
 ├── tools/AdrMcp.DocGen/               # generates docs/03-mcp-contracts.md from code
 ├── tools/AdrMcp.Import/               # scan and load existing ADR Markdown files (docs/10-legacy-adr-import.md)
@@ -71,7 +72,7 @@
 │       ├── Mcp/McpToolAdapter.cs · Tools/{AdrTools,FileTools,AnalysisTools,JobAndMemoryTools}.cs
 │       └── Jobs/{AnalysisJobWorker,JobHandlers}.cs · Timers/MaintenanceTimer.cs · Http/HealthFunction.cs
 └── tests/
-    ├── AdrMcp.UnitTests/              # 124 tests: domain, services, analyzers, contracts, security (in-memory persistence)
+    ├── AdrMcp.UnitTests/              # domain, services, analyzers, contracts, security, resource naming (in-memory persistence; the naming tests need the Bicep CLI)
     └── AdrMcp.IntegrationTests/       # Azurite-backed blob/SAS tests; Cosmos tests gated by env vars
 ```
 

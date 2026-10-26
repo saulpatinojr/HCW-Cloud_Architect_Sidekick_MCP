@@ -6,6 +6,9 @@ param consistency string
 param enablePrivateNetworking bool
 param privateEndpointSubnetId string
 param vnetId string
+param vnetName string
+@description('Name of the private endpoint (ADR-0009), built in main.bicep.')
+param privateEndpointName string
 
 // Serverless NoSQL account: pay per RU, no minimum throughput - right-sized for an MVP with bursty MCP traffic.
 resource account 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
@@ -74,7 +77,7 @@ resource sqlContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/conta
 
 module cosmosPe './private-endpoint.bicep' = if (enablePrivateNetworking) {
   name: '${name}-pe'
-  params: { name: 'pe-${name}', location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, targetResourceId: account.id, groupId: 'Sql', dnsZoneName: 'privatelink.documents.azure.com' }
+  params: { name: privateEndpointName, location: location, tags: tags, subnetId: privateEndpointSubnetId, vnetId: vnetId, vnetName: vnetName, targetResourceId: account.id, groupId: 'Sql', dnsZoneName: 'privatelink.documents.azure.com' }
 }
 
 output name string = account.name

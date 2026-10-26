@@ -184,8 +184,24 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.Web/sites" && r.Name == "func-adr-dev-scus-01");
     }
 
+    [BicepFact]
+    public async Task A_second_environment_gets_its_own_names_so_two_azd_environments_cannot_overwrite_each_other()
+    {
+        var dev = await _bicep.Get("region:southcentralus");
+        var prod = await _bicep.Get("second-environment");
+        Assert.True(dev.Succeeded && prod.Succeeded, dev.Output + prod.Output);
+
+        Assert.Contains(prod.Resources, r => r.Type == "Microsoft.Resources/resourceGroups" && r.Name == "rg-adr-prod-scus-01");
+        var problems = NamingChecks.Verify(prod.Resources, "scus", suffix: "", environment: "prod");
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        // Every name differs, except the privatelink.* DNS zones: Azure fixes those names, and each environment has them in its own resource group.
+        static IEnumerable<string> Names(BicepSnapshot s) => s.Resources.Where(r => !r.Name.StartsWith('[') && !r.Type.StartsWith("Microsoft.Network/privateDnsZones", StringComparison.OrdinalIgnoreCase)).Select(r => r.Name);
+        Assert.Empty(Names(dev).Intersect(Names(prod)));
+    }
+
     [BicepTheory]
     [InlineData("location", "has no short code")]
+    [InlineData("environmentName", "must end with")]
     [InlineData("workloadName", "lower-case letters and digits only")]
     [InlineData("environmentShort", "lower-case letters and digits only")]
     [InlineData("nameSuffix", "lower-case letters and digits only")]
@@ -352,6 +368,8 @@ internal static class NamingChecks
         foreach (var (key, value) in expected)
             if (!r.Tags.TryGetValue(key, out var actual) || actual != value) problems.Add($"{r.Type} '{r.Name}': tag {key} should be '{value}', found '{actual ?? "(missing)"}'.");
         if (!r.Tags.ContainsKey("azd-env-name")) problems.Add($"{r.Type} '{r.Name}': tag azd-env-name is missing (azd needs it).");
+        if (r.Type.Equals("Microsoft.Web/sites", StringComparison.OrdinalIgnoreCase) && !(r.Tags.TryGetValue("azd-service-name", out var service) && service == "api"))
+            problems.Add($"{r.Type} '{r.Name}': tag azd-service-name must be 'api' (azure.yaml service name); azd deploy finds the function app by it.");
 
         var isGroup = r.Type.Equals("Microsoft.Resources/resourceGroups", StringComparison.OrdinalIgnoreCase);
         if (isGroup && r.Tags.ContainsKey("component")) problems.Add($"{r.Type} '{r.Name}': the resource group holds every component, so it has no component tag.");
@@ -379,11 +397,12 @@ internal static class NamingChecks
 /// </summary>
 public sealed class BicepSnapshotFixture : IDisposable
 {
-    internal const string AzdEnvironmentName = "azd-test-env";   // deliberately unlike dev: it must appear in a tag and in no name
+    internal const string AzdEnvironmentName = "azd-test-dev";   // ends with -dev as the template requires, but is not the pattern's "adr-dev": it must appear in a tag and in no name
     private const string FakeSubscriptionId = "00000000-0000-0000-0000-000000000000";
     private readonly Lazy<string> _workDirectory;
     private readonly Lazy<IReadOnlyDictionary<string, Task<BicepSnapshot>>> _runs;
     private readonly SemaphoreSlim _limit = new(Math.Clamp(Environment.ProcessorCount, 2, 6));
+    private readonly CancellationTokenSource _stop = new();
 
     public BicepSnapshotFixture()
     {
@@ -405,6 +424,30 @@ public sealed class BicepSnapshotFixture : IDisposable
         return directories.SelectMany(d => names.Select(n => Path.Join(d, n))).FirstOrDefault(File.Exists);
     }
 
+    // `bicep snapshot` exists from Bicep 0.41.2 (Microsoft Learn, "Bicep CLI commands").
+    private static readonly Version MinimumVersion = new(0, 41, 2);
+    private static readonly Lazy<string?> Unusable = new(CheckUsable);
+
+    /// <summary>Why the tests cannot run (no CLI, or one too old for `bicep snapshot`), or null when they can.</summary>
+    internal static string? UnusableReason() => Unusable.Value;
+
+    private static string? CheckUsable()
+    {
+        var bicep = FindBicep();
+        if (bicep is null) return "The Bicep CLI was not found (run `az bicep install`, or set ADR_BICEP_PATH).";
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(bicep, "--version") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false })!;
+            var text = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(30_000)) { process.Kill(); return "`bicep --version` did not answer within 30 seconds."; }
+            var match = Regex.Match(text, @"(\d+)\.(\d+)\.(\d+)");
+            if (match.Success && new Version(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[3].Value)) < MinimumVersion)
+                return $"Bicep {match.Value} is older than {MinimumVersion}, which `bicep snapshot` needs (run `az bicep upgrade`).";
+            return null;
+        }
+        catch (System.ComponentModel.Win32Exception e) { return $"The Bicep CLI could not be started: {e.Message}"; }
+    }
+
     internal static bool Required => string.Equals(Environment.GetEnvironmentVariable("ADR_TEST_REQUIRE_BICEP"), "true", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyDictionary<string, Task<BicepSnapshot>> StartAll()
@@ -416,6 +459,11 @@ public sealed class BicepSnapshotFixture : IDisposable
             foreach (var (name, value) in more) p[name] = value;
             return p;
         }
+        static Dictionary<string, string> InEnvironment(string environment, Dictionary<string, string> parameters)
+        {
+            parameters["environmentName"] = Quote($"azd-test-{environment}");
+            return parameters;
+        }
 
         var scenarios = new Dictionary<string, Dictionary<string, string>>();
         var regions = JsonNode.Parse(File.ReadAllText(Path.Join(_workDirectory.Value, "infra", "region-codes.json")))!.AsObject().Select(p => p.Key).ToList();
@@ -425,7 +473,9 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["group-override"] = Parameters("southcentralus", ("resourceGroupName", Quote("rg-custom")));
         scenarios["spaced-region"] = Parameters("South Central US");
         foreach (var region in new[] { "westcentralus", "northcentralus" })   // the longest region codes (4 characters)
-            scenarios[$"long:{region}"] = Parameters(region, ("enablePrivateNetworking", "true"), ("workloadName", Quote("adrmcp")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b")));
+            scenarios[$"long:{region}"] = InEnvironment("prod", Parameters(region, ("enablePrivateNetworking", "true"), ("workloadName", Quote("adrmcp")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));
+        scenarios["second-environment"] = InEnvironment("prod", Parameters("southcentralus", ("enablePrivateNetworking", "true"), ("environmentShort", Quote("prod"))));
+        scenarios["reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));   // azd environment ends with -prod but environmentShort stays dev
         scenarios["reject:location"] = Parameters("brazilsouth");
         scenarios["reject:workloadName"] = Parameters("southcentralus", ("workloadName", Quote("ADR")));
         scenarios["reject:environmentShort"] = Parameters("southcentralus", ("environmentShort", Quote("de_v")));
@@ -452,7 +502,8 @@ public sealed class BicepSnapshotFixture : IDisposable
 
     private async Task<BicepSnapshot> RunAsync(Dictionary<string, string> parameters)
     {
-        var bicep = FindBicep() ?? throw new InvalidOperationException("The Bicep CLI was not found (run `az bicep install`).");
+        if (UnusableReason() is { } reason) throw new InvalidOperationException(reason);
+        var bicep = FindBicep()!;
         var work = _workDirectory.Value;
         var id = Guid.NewGuid().ToString("N");
         var paramFile = Path.Join(work, $"p-{id}.bicepparam");
@@ -463,11 +514,12 @@ public sealed class BicepSnapshotFixture : IDisposable
         var start = new ProcessStartInfo(bicep) { WorkingDirectory = work, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         foreach (var a in new[] { "snapshot", paramFile, "--mode", "overwrite", "--subscription-id", FakeSubscriptionId, "--location", location }) start.ArgumentList.Add(a);
 
-        await _limit.WaitAsync();
+        await _limit.WaitAsync(_stop.Token);
         try
         {
             using var process = Process.Start(start)!;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+            timeout.CancelAfter(TimeSpan.FromMinutes(2));
             var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
             var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
             try { await process.WaitForExitAsync(timeout.Token); }
@@ -490,7 +542,12 @@ public sealed class BicepSnapshotFixture : IDisposable
 
     public void Dispose()
     {
-        if (_workDirectory.IsValueCreated) try { Directory.Delete(_workDirectory.Value, recursive: true); } catch (IOException) { /* temp folder; the OS cleans it */ }
+        _stop.Cancel();   // a run that is still going (for example after a filtered test run) is stopped, then its folder can be removed
+        if (_runs.IsValueCreated) try { Task.WaitAll(_runs.Value.Values.ToArray(), TimeSpan.FromSeconds(30)); } catch (AggregateException) { /* cancelled runs */ }
+        if (_workDirectory.IsValueCreated)
+            try { Directory.Delete(_workDirectory.Value, recursive: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* temp folder; the OS cleans it */ }
+        _stop.Dispose();
     }
 }
 
@@ -501,7 +558,7 @@ public sealed class BicepFactAttribute : FactAttribute
 {
     public BicepFactAttribute()
     {
-        if (!BicepSnapshotFixture.Required && BicepSnapshotFixture.FindBicep() is null) Skip = "The Bicep CLI is not installed (run `az bicep install`).";
+        if (!BicepSnapshotFixture.Required && BicepSnapshotFixture.UnusableReason() is { } reason) Skip = reason;
     }
 }
 
@@ -510,6 +567,6 @@ public sealed class BicepTheoryAttribute : TheoryAttribute
 {
     public BicepTheoryAttribute()
     {
-        if (!BicepSnapshotFixture.Required && BicepSnapshotFixture.FindBicep() is null) Skip = "The Bicep CLI is not installed (run `az bicep install`).";
+        if (!BicepSnapshotFixture.Required && BicepSnapshotFixture.UnusableReason() is { } reason) Skip = reason;
     }
 }

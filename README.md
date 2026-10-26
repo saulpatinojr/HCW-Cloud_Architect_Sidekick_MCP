@@ -83,7 +83,7 @@ The example settings use in-memory persistence, so only Azurite is needed locall
 ```bash
 azd auth login
 azd init -e adr-dev
-azd env set AZURE_LOCATION eastus2        # any Flex Consumption region
+azd env set AZURE_LOCATION eastus2        # one of the 16 regions in infra/region-codes.json
 azd up                                    # Bicep provision + deploy
 ```
 

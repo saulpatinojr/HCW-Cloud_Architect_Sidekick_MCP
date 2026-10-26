@@ -21,7 +21,7 @@ param workloadName string = 'adr'
 
 @minLength(2)
 @maxLength(5)
-@description('Short environment name used in every resource name, for example dev, test or prod: lower-case letters and digits only (ADR-0009). Separate from environmentName so the azd and GitHub environment name can stay as it is, but environmentName must end with "-<environmentShort>" (adr-dev with dev) so that two azd environments can never share resource names.')
+@description('Short environment name used in every resource name, for example dev, test or prod: lower-case letters and digits only (ADR-0009). Separate from environmentName so the azd and GitHub environment name can stay as it is, but environmentName must end with "-<environmentShort>" (adr-dev with dev), so that adding a second azd environment without its own short name fails at once instead of sharing resource names.')
 param environmentShort string = 'dev'
 
 @maxLength(4)

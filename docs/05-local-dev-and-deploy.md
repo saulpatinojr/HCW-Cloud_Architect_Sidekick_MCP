@@ -104,7 +104,7 @@ Every name is built in one place, `infra/main.bicep`, from `<abbreviation>-<work
 | Private networking only | `vnet-…`, `snet-adr-app-…`, `snet-adr-pep-…`, `pep-adr-cosmos-…`, `pep-adr-kv-…`, `pep-adr-blob-…`, `pep-adr-queue-…` |
 
 Things to know:
-- The azd environment name (`adr-dev`) is **not** part of any name. It stays the azd environment, the GitHub environment and the `azd-env-name` tag. It must end with `-<environmentShort>` (`adr-dev` ends with `-dev`), so that two azd environments can never get the same names: a second one is called `adr-prod` and sets `azd env set ADR_ENVIRONMENT_SHORT prod` (the workflow then needs its own `ADR_ENVIRONMENT_SHORT` line too). `ADR_WORKLOAD_NAME` takes 2 to 8 and `ADR_ENVIRONMENT_SHORT` 2 to 5 lower-case letters or digits.
+- The azd environment name (`adr-dev`) is **not** part of any name. It stays the azd environment, the GitHub environment and the `azd-env-name` tag. It must end with `-<environmentShort>` (`adr-dev` ends with `-dev`). That catches the likely mistake of adding a second azd environment without its own short name: a second one is called `adr-prod` and sets `azd env set ADR_ENVIRONMENT_SHORT prod` (the workflow then needs its own `ADR_ENVIRONMENT_SHORT` line too). It cannot catch two environments that end in the same short name, such as `adr-dev` and `other-dev`: give those a different `ADR_WORKLOAD_NAME`, region or suffix. `ADR_WORKLOAD_NAME` takes 2 to 8 and `ADR_ENVIRONMENT_SHORT` 2 to 5 lower-case letters or digits.
 - The region needs a short code in `infra/region-codes.json` (16 regions today, the table is in the ADR). The `azd env set AZURE_LOCATION eastus2` above gives `eus2`, so the group is `rg-adr-dev-eus2-01`. For another region the deployment stops at once and says so; add the code first.
 - The function app, the Cosmos DB account, the Key Vault and the storage account must be unique in all of Azure. If Azure says one is taken (for example a Key Vault that is still soft-deleted), set a suffix and provision again: `azd env set ADR_NAME_SUFFIX b` (in GitHub: the repository variable `ADR_NAME_SUFFIX`). The suffix goes on those four names only, for example `kv-adr-dev-scus-01b`. Use lower-case letters and digits, at most four.
 - Tags on the group and every resource: `workload` (`adr`), `application` (`adr-mcp`), `environment` (`dev`), `azd-env-name` (`adr-dev`), and `component` (`api`, `data`, `security`, `monitoring` or `network`) on each resource.
@@ -184,7 +184,7 @@ Immutable `evidence` container: time-based retention (365 days, unlocked). Remov
 
 ## Replacing the dev environment after the naming change
 
-**Who and when.** This is an owner step, done once. Start it when the pull request that introduces [ADR-0009](adr/ADR-0009-azure-naming-convention.md) has been reviewed and is ready to merge; step 8 merges it. Until part D, the old environment keeps working and nothing is deleted.
+**Who and when.** This is an owner step, done once. Start it when the pull request that introduces [ADR-0009](adr/ADR-0009-azure-naming-convention.md) has been reviewed and is ready to merge; step 10 merges it. Until part D, the old environment keeps working and nothing is deleted.
 
 **Why it cannot be done in place.** Azure cannot rename a resource group, a function app, a Key Vault or most other resources ([Microsoft's naming guidance](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/azure-best-practices/resource-naming) says the same). So the new environment `rg-adr-dev-scus-01` is built next to the old one `rg-adr-dev`, and the old one is deleted at the end. This runbook needs only the Azure CLI (`az`), the GitHub CLI (`gh`) and the `ci-cd` workflow that created the old environment. (`azd down` followed by `azd up` from your own machine would also work, but it needs an azd environment set up as in "Provision Azure resources" above and has not been tried.)
 
@@ -201,7 +201,7 @@ Immutable `evidence` container: time-based retention (365 days, unlocked). Remov
 
 **What is lost in part D (irreversible).** The Cosmos DB data (ADRs, history, findings, audit, memory), everything in the storage account (uploaded evidence, reports), the logs, and the Key Vault secret `principal-hash-salt` (the new environment creates a new random one, so old principal hashes would no longer match; nothing is kept, so nothing is compared). Time, as estimates: the build in part B takes 10 to 15 minutes, the delete in part D about 5.
 
-Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step 1 to the end: later steps reuse the variables `$sub` and `$app`. If you close the window, repeat step 4 (and step 16 for `$app`). You need the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) signed in with an account that can delete a resource group in the subscription, the [GitHub CLI](https://cli.github.com/) signed in, and, in `EntraBuiltIn` mode (people sign in with their Microsoft Entra account instead of a shared key), the right to edit the server's Entra app registration. None of the commands reads a file from the repository, so any folder will do.
+Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step 1 to the end: later steps reuse the variables `$sub` and `$app`. If you close the window, repeat step 4 (and step 17 for `$app`). You need the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) signed in with an account that can delete a resource group in the subscription, the [GitHub CLI](https://cli.github.com/) signed in, and, in `EntraBuiltIn` mode (people sign in with their Microsoft Entra account instead of a shared key), the right to edit the server's Entra app registration. None of the commands reads a file from the repository, so any folder will do.
 
 ### Part A: Prepare (changes nothing)
 
@@ -231,7 +231,15 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
    It prints nothing. If it says the variable was not found, stop: the deploy setup in [Tests and CI](07-tests-and-ci.md) has not been done.
 
-5. **Check that you can see that subscription.**
+5. **Check that no variable is overridden for the `adr-dev` environment.** A GitHub environment can hold its own copy of a variable, and the workflow uses that copy before the repository one. The commands below read the repository copies.
+
+   ```powershell
+   gh variable list --env adr-dev --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP
+   ```
+
+   It prints nothing: the deploy setup keeps the variables at repository level. If it lists `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `ADR_AUTH_MODE`, `ADR_ENTRA_CLIENT_ID` or `ADR_NAME_SUFFIX`, add `--env adr-dev` to every `gh variable get` and `gh variable set` for that name below, and repeat step 4 first if it is `AZURE_SUBSCRIPTION_ID`.
+
+6. **Check that you can see that subscription.**
 
    ```powershell
    az account show --subscription $sub --query name --output tsv
@@ -239,7 +247,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
    It prints the subscription's name. If it says the subscription was not found, run `az login` with the account that owns it.
 
-6. **Look at the old group.**
+7. **Look at the old group.**
 
    ```powershell
    az resource list --resource-group rg-adr-dev --subscription $sub --output table
@@ -247,9 +255,9 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
    You should see the function app, plan, Cosmos DB account, Key Vault, storage account, Log Analytics workspace, Application Insights and identity, plus an `Application Insights Smart Detection` action group that Azure adds itself. If it says `ResourceGroupNotFound`, the old environment is already gone: skip part D.
 
-7. **Keep anything you need from the old environment, now.** Part D deletes it, and after step 18 clients can no longer sign in to the old address. To keep an ADR, export it with the `adr_export` tool through your MCP client while the old address still works. The evidence blobs and the logs cannot be exported by this runbook. If you are unsure, stop here.
+8. **Keep anything you need from the old environment, now.** Part D deletes it, and after step 19 clients can no longer sign in to the old address. To keep an ADR, export it with the `adr_export` tool through your MCP client while the old address still works. The evidence blobs and the logs cannot be exported by this runbook. If you are unsure, stop here.
 
-8. **Check that deployments are switched on for the repository.**
+9. **Check that deployments are switched on for the repository.**
 
    ```powershell
    gh variable get ADR_DEPLOY_ENABLED --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP
@@ -259,19 +267,19 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
 ### Part B: Build the new environment next to the old one
 
-9. **Merge the pull request** on the [pull requests page](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/pulls). The merge starts a `ci-cd` run.
+10. **Merge the pull request** on the [pull requests page](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/pulls). The merge starts a `ci-cd` run.
 
-10. **Open the new run.** Go to the [ci-cd runs](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml) and open the newest one. `Build, test, scan` turns green. `Provision + deploy (OIDC)` then shows `Waiting`: GitHub asks you to approve a deployment to the protected environment `adr-dev` because `infra/` changed. If there is no waiting run (it was cancelled, or the job was skipped), start one and open it:
+11. **Open the new run.** Go to the [ci-cd runs](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/workflows/ci-cd.yml) and open the newest one. `Build, test, scan` turns green. `Provision + deploy (OIDC)` then shows `Waiting`: GitHub asks you to approve a deployment to the protected environment `adr-dev` because `infra/` changed. If there is no waiting run (it was cancelled, or the job was skipped), start one and open it:
 
     ```powershell
     gh workflow run ci-cd.yml --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP --ref main -f environment=adr-dev
     ```
 
-11. **Approve the deployment.** On the run, choose `Review deployments`, tick `adr-dev`, choose `Approve and deploy`. If GitHub does not offer the button for a run you started yourself, the environment is set to prevent self-review: ask a second reviewer, or switch that setting off for the run under the [environment settings](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/settings/environments) and switch it back on afterwards.
+12. **Approve the deployment.** On the run, choose `Review deployments`, tick `adr-dev`, choose `Approve and deploy`. If GitHub does not offer the button for a run you started yourself, the environment is set to prevent self-review: ask a second reviewer, or switch that setting off for the run under the [environment settings](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/settings/environments) and switch it back on afterwards.
 
-12. **Wait for the run to finish** (about 10 to 15 minutes). The `Preview` step shows a what-if plan (a dry-run list of what the deployment would do); it should list only creates, in `rg-adr-dev-scus-01`. The run ends with `Wait for the app to start` and, in `EntraBuiltIn` mode, `Verify unauthenticated MCP calls are rejected`, both green. If a step is red, open its log; see "If the build in part B fails" below before you continue.
+13. **Wait for the run to finish** (about 10 to 15 minutes). The `Preview` step shows a what-if plan (a dry-run list of what the deployment would do); it should list only creates, in `rg-adr-dev-scus-01`. The run ends with `Wait for the app to start` and, in `EntraBuiltIn` mode, `Verify unauthenticated MCP calls are rejected`, both green. If a step is red, open its log; see "If the build in part B fails" below before you continue.
 
-13. **Check the new group.**
+14. **Check the new group.**
 
     ```powershell
     az resource list --resource-group rg-adr-dev-scus-01 --subscription $sub --output table
@@ -279,7 +287,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     You should see `func-adr-dev-scus-01`, `asp-adr-dev-scus-01`, `cosno-adr-dev-scus-01`, `kv-adr-dev-scus-01`, `stadrdevscus01`, `log-adr-dev-scus-01`, `appi-adr-dev-scus-01` and `id-adr-dev-scus-01` (plus the Azure-created action group). The old group is untouched.
 
-14. **Check that the new app answers.**
+15. **Check that the new app answers.**
 
     ```powershell
     curl.exe --silent https://func-adr-dev-scus-01.azurewebsites.net/api/health
@@ -293,21 +301,23 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
 ### Part C: Move the sign-in identity and your clients to the new address
 
-15. **Check the sign-in mode.** Steps 16 to 19 are for `EntraBuiltIn` mode only; in `FunctionKey` mode go straight to step 20.
+16. **Check the sign-in mode of the new app**, which is what is really deployed. Steps 17 to 20 are for `EntraBuiltIn` mode only; in `FunctionKey` mode go straight to step 21.
 
     ```powershell
-    gh variable get ADR_AUTH_MODE --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP
+    (az functionapp config appsettings list --resource-group rg-adr-dev-scus-01 --name func-adr-dev-scus-01 --subscription $sub --output json | ConvertFrom-Json | Where-Object name -eq 'Auth__Mode').value
     ```
 
-    It prints `EntraBuiltIn` or `FunctionKey`. If it says the variable was not found, the mode is `FunctionKey` (the workflow's default).
+    It prints `EntraBuiltIn` or `FunctionKey` (people sign in with their Microsoft Entra account, or with a shared key). If it prints nothing or an error, stop and do not go on to part D: you do not know which mode is deployed. (With a suffix, use the names with the suffix, see "If the build in part B fails".)
 
-16. **Read the id of the server's app registration.**
+17. **Read the id of the server's app registration.**
 
     ```powershell
     $app = gh variable get ADR_ENTRA_CLIENT_ID --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP
     ```
 
-17. **Read its Application ID URIs and write them down.** An Application ID URI is the address Entra ID treats as the identity of this server; the MCP URL clients send must equal one of them ([ADR-0008](adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md)).
+    It prints nothing. If it says the variable was not found, stop and do not go on to part D: the mode is `EntraBuiltIn` but the app registration is unknown, so ask the maintainer.
+
+18. **Read its Application ID URIs and write them down.** An Application ID URI is the address Entra ID treats as the identity of this server; the MCP URL clients send must equal one of them ([ADR-0008](adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md)).
 
     ```powershell
     az ad app show --id $app --query identifierUris --output json
@@ -315,7 +325,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     You should see `api://` followed by the client id, and the old MCP URL `https://func-adr-….azurewebsites.net/runtime/webhooks/mcp`. Copy the whole list somewhere: you need it to undo. If anything else is in the list, stop and ask the maintainer: the next step replaces the whole list. If `az` cannot find the application, you are signed in to another tenant: run `az login --tenant (gh variable get AZURE_TENANT_ID --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP)` and repeat.
 
-18. **Replace the old MCP URL with the new one.** Clients can no longer sign in to the old address after this.
+19. **Replace the old MCP URL with the new one.** Clients can no longer sign in to the old address after this.
 
     ```powershell
     az ad app update --id $app --identifier-uris "api://$app" "https://func-adr-dev-scus-01.azurewebsites.net/runtime/webhooks/mcp"
@@ -323,7 +333,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     It prints nothing. If the error mentions a verified domain, see step 2 of the runbook in [Entra sign-in](11-entra-sign-in.md). If it says the URI is already in use by another object, another app registration holds it: find and fix that one first.
 
-19. **Read it back.**
+20. **Read it back.**
 
     ```powershell
     az ad app show --id $app --query identifierUris --output json
@@ -331,7 +341,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     You should see exactly two entries: `api://` plus the client id, and the new MCP URL. The old host must be gone.
 
-20. **Point each client you use at the new address** (use the new host from step 14 if it differed). [Connecting Claude](06-claude-connection.md) has the details. Do only the ones you use:
+21. **Point each client you use at the new address** (use the new host from step 15 if it differed). [Connecting Claude](06-claude-connection.md) has the details. Do only the ones you use:
 
     - Claude Code with the project `.mcp.json`: set the URL it reads, then open a new terminal.
 
@@ -350,13 +360,13 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
       If the value is empty, the host has not created the key yet: wait a few minutes and repeat. To keep the key, put it in your secret manager, not in a file ([Connecting Claude](06-claude-connection.md)).
 
-21. **Prove one client works against the new address.** In Claude Code, open `/mcp`: `adr` should be `Connected` and list its tools. If it does not, fix that before part D.
+22. **Prove one client works against the new address.** In Claude Code, open `/mcp`: `adr` should be `Connected` and list its tools. If it does not, fix that before part D.
 
 ### Part D: Delete the old environment (irreversible)
 
-22. **Stop and check.** Do part D only if step 14 showed `"status":"ok"` and step 21 worked. Nothing before this step deleted anything, and until now you can undo everything (see "To undo"). From step 23 on, the data listed under "What is lost" is gone for good.
+23. **Stop and check.** Do part D only if step 15 showed `"status":"ok"` and step 22 worked. Nothing before this step deleted anything, and until now you can undo everything (see "To undo"). From step 24 on, the data listed under "What is lost" is gone for good.
 
-23. **Delete the old group. This cannot be undone.**
+24. **Delete the old group. This cannot be undone.**
 
     ```powershell
     az group delete --name rg-adr-dev --subscription $sub
@@ -364,7 +374,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     It asks `Are you sure you want to perform this operation? (y/n):`. Type `y` and press Enter. The command waits a few minutes and then returns with no output. If it fails with a message about an immutable blob or an immutability policy, use "If the delete stops at the evidence container" below, then repeat this step.
 
-24. **Check that it is gone.**
+25. **Check that it is gone.**
 
     ```powershell
     az group exists --name rg-adr-dev --subscription $sub
@@ -372,7 +382,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     It prints `false`. If it prints `true`, the delete is still running: wait two minutes and repeat.
 
-25. **Look at the old Key Vault, and leave it alone.** A deleted Key Vault is soft-deleted: Azure keeps it in a recycle bin for 90 days. This one has purge protection, so Azure refuses to empty the bin early ([Key Vault recovery](https://learn.microsoft.com/azure/key-vault/general/key-vault-recovery#what-are-soft-delete-and-purge-protection)).
+26. **Look at the old Key Vault, and leave it alone.** A deleted Key Vault is soft-deleted: Azure keeps it in a recycle bin for 90 days. This one has purge protection, so Azure refuses to empty the bin early ([Key Vault recovery](https://learn.microsoft.com/azure/key-vault/general/key-vault-recovery#what-are-soft-delete-and-purge-protection)).
 
     ```powershell
     az keyvault list-deleted --subscription $sub --output json | ConvertFrom-Json | Select-Object name, @{n='purgeDate';e={$_.properties.scheduledPurgeDate}}
@@ -380,23 +390,23 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
     You should see a row whose name starts with `kv-adr-` and a purge date about 90 days away. Other rows are older vaults; ignore them. The old vault's name stays reserved until then, which does not matter: the new vault is called `kv-adr-dev-scus-01`.
 
-You are done when a client lists the tools from the new address and step 24 printed `false`.
+You are done when a client lists the tools from the new address and step 25 printed `false`.
 
 ### If the build in part B fails
 
-- **`Provision` says a name already exists or is not available.** Names are checked only at deployment, not in `Preview`. Someone else holds one of the four names that must be unique in all of Azure, or an earlier try left it behind. Set a suffix, then start the workflow again (step 10) and approve it (step 11):
+- **`Provision` says a name already exists or is not available.** Names are checked only at deployment, not in `Preview`. Someone else holds one of the four names that must be unique in all of Azure, or an earlier try left it behind. Set a suffix, then start the workflow again (step 11) and approve it (step 12):
 
   ```powershell
   gh variable set ADR_NAME_SUFFIX --repo saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP --body b
   ```
 
-  With suffix `b` the four global names end in `b`: `func-adr-dev-scus-01b`, `cosno-adr-dev-scus-01b`, `kv-adr-dev-scus-01b`, `stadrdevscus01b`, and the host is `func-adr-dev-scus-01b.azurewebsites.net`. Use those names in steps 13 to 20. The failed first run can leave resources with the plain names in `rg-adr-dev-scus-01` (Azure may not roll back a partly finished deployment; this was not tested): after step 13, delete any extra function app, Cosmos DB account or storage account in the portal. Leave an extra Key Vault alone: purge protection keeps it for 90 days.
+  With suffix `b` the four global names end in `b`: `func-adr-dev-scus-01b`, `cosno-adr-dev-scus-01b`, `kv-adr-dev-scus-01b`, `stadrdevscus01b`, and the host is `func-adr-dev-scus-01b.azurewebsites.net`. Use those names in steps 14 to 21. The failed first run can leave resources with the plain names in `rg-adr-dev-scus-01` (Azure may not roll back a partly finished deployment; this was not tested): after step 14, delete any extra function app, Cosmos DB account or storage account in the portal. Leave an extra Key Vault alone: purge protection keeps it for 90 days.
 - **`Deploy` or `Wait for the app to start` is red.** Open the step's log. On a first deployment the app identity's role can still be spreading (the workflow retries three times), and an unresolved Key Vault reference stops the app from starting; the comments in `.github/workflows/ci-cd.yml` say what to look for. Use `Re-run failed jobs` on the run.
 - **Anything else.** Part B only added a new group. Nothing of the old environment was changed, so you can stop here, delete `rg-adr-dev-scus-01` and ask the maintainer.
 
 ### If the delete stops at the evidence container
 
-The `evidence` container has a time-based retention policy (365 days, unlocked), which Microsoft's documentation suggests can block deletion while the container holds blobs. Remove the policy, then repeat step 23. This works only because the policy is unlocked; a locked policy cannot be removed ([Microsoft Learn](https://learn.microsoft.com/azure/storage/blobs/immutable-policy-configure-container-scope#modify-an-unlocked-retention-policy)).
+The `evidence` container has a time-based retention policy (365 days, unlocked), which Microsoft's documentation suggests can block deletion while the container holds blobs. Remove the policy, then repeat step 24. This works only because the policy is unlocked; a locked policy cannot be removed ([Microsoft Learn](https://learn.microsoft.com/azure/storage/blobs/immutable-policy-configure-container-scope#modify-an-unlocked-retention-policy)).
 
 ```powershell
 $st = (az storage account list --resource-group rg-adr-dev --subscription $sub --output json | ConvertFrom-Json).name
@@ -408,5 +418,5 @@ az storage container immutability-policy delete --resource-group rg-adr-dev --ac
 
 ### To undo
 
-- **Before step 23** you can go back completely: delete the new group with `az group delete --name rg-adr-dev-scus-01 --subscription $sub`, put back the Application ID URIs you wrote down in step 17 (`az ad app update --id $app --identifier-uris` followed by each URI in quotes), and point your clients back at the old address. Do **not** use `azd down` while both groups exist: it deletes the group recorded by the latest deployment, which is the new one.
-- **After step 23** there is no undo for the data. The old Key Vault can be recovered for 90 days with `az keyvault recover --name` followed by the `kv-adr-…` name from step 25 and `--location southcentralus`; that brings back the vault and its secret, not the data. If you ever deploy the old template again within 90 days, recover the vault first, because its name is reserved. See Rollback in [ADR-0009](adr/ADR-0009-azure-naming-convention.md).
+- **Before step 24** you can go back completely: delete the new group with `az group delete --name rg-adr-dev-scus-01 --subscription $sub`, put back the Application ID URIs you wrote down in step 18 (`az ad app update --id $app --identifier-uris` followed by each URI in quotes), and point your clients back at the old address. Do **not** use `azd down` while both groups exist: it deletes the group recorded by the latest deployment, which is the new one.
+- **After step 24** there is no undo for the data. The old Key Vault can be recovered for 90 days with `az keyvault recover --name` followed by the `kv-adr-…` name from step 26 and `--location southcentralus`; that brings back the vault and its secret, not the data. If you ever deploy the old template again within 90 days, recover the vault first, because its name is reserved. See Rollback in [ADR-0009](adr/ADR-0009-azure-naming-convention.md).

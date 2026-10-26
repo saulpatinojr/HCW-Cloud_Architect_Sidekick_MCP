@@ -185,7 +185,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     }
 
     [BicepFact]
-    public async Task A_second_environment_gets_its_own_names_so_two_azd_environments_cannot_overwrite_each_other()
+    public async Task A_second_environment_with_its_own_short_name_gets_its_own_names()
     {
         var dev = await _bicep.Get("region:southcentralus");
         var prod = await _bicep.Get("second-environment");

@@ -1,6 +1,6 @@
 # Entra sign-in for MCP clients
 
-Status: the code half of [issue #27](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/issues/27) is built and tested without a tenant. The tenant half (app registrations, client sign-in, staging) is **not done**, and adr-dev stays on `FunctionKey`. The design and the reasons are in [ADR-0008](adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) (Proposed).
+Status: the code half of [issue #27](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/issues/27) is built and tested without a tenant. The dev environment (`adr-dev`) runs in `EntraBuiltIn` mode: in the successful `ci-cd` run of 2026-10-26 ([run 40386017357](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/runs/40386017357)) the step that sends an MCP call with no token passed, so App Service Authentication refuses it. The rest of the tenant half is **not yet verified**: that each MCP client signs in to the dev environment, and whether the optional in-app check (`Auth__Entra__ValidateBearerToken`, off by default) is on there. The design and the reasons are in [ADR-0008](adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) (Proposed; its Update of 2026-10-27 records the mode change).
 
 ## What this is, in plain words
 
@@ -131,6 +131,7 @@ Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized 
 - That Easy Auth forwards the `Authorization` header to the function on Azure, and that the platform metadata and the app's metadata coexist behind it.
 - That the tenant accepts `https://<app>.azurewebsites.net/runtime/webhooks/mcp` as an Application ID URI (step 2 of the runbook answers this).
 - That each client signs in: VS Code, Copilot CLI, Claude Code, Claude.ai and Desktop, Codex, Kiro, Antigravity, Perplexity.
+- Whether the in-app check is switched on in the dev environment (the deploy default for `ADR_ENTRA_VALIDATE_IN_APP` is `false`).
 - The `az` and Graph commands in the runbook have never been run (they were checked only against `az ... --help`).
 - Easy Auth's MCP authorization is a preview feature.
 
@@ -218,7 +219,7 @@ $env:ADR_MCP_BEARER = $good; python scripts/smoke-test.py --url "$base/runtime/w
 
 6. Owner-only check (optional, needs a second sandbox user): sign in as that user with `az login --tenant $tenant --scope "api://$app/user_impersonation"` and request a token as in step 5. Expect `AADSTS50105` (not assigned). Then sign back in as yourself.
 
-7. Deployed app instead of local: deploy with `ADR_AUTH_MODE=EntraBuiltIn`, the server app ID, the allowed client IDs and `ADR_ENTRA_VALIDATE_IN_APP=true` (docs/05), set `$base` to `https://<app host>` and repeat step 5. Lines 1 to 3 are then answered by Easy Auth (still 401); line 4 onward proves that Easy Auth lets the token through and that the app accepts it. Do this in the staging environment before `ADR_AUTH_MODE=EntraBuiltIn` is switched on for adr-dev.
+7. Deployed app instead of local: deploy with `ADR_AUTH_MODE=EntraBuiltIn`, the server app ID, the allowed client IDs and `ADR_ENTRA_VALIDATE_IN_APP=true` (docs/05), set `$base` to `https://<app host>` and repeat step 5. Lines 1 to 3 are then answered by Easy Auth (still 401); line 4 onward proves that Easy Auth lets the token through and that the app accepts it. `adr-dev` already runs with `ADR_AUTH_MODE=EntraBuiltIn` (see the Status line at the top); the in-app check is the part that is not yet verified there. If any line differs, set `ADR_ENTRA_VALIDATE_IN_APP` back to `false` and provision again.
 
 8. Clean up. Stop windows 2 and 3 with Ctrl+C, then:
 

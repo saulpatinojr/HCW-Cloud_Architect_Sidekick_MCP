@@ -20,7 +20,7 @@ Install Core Tools and Azurite without admin rights: `npm install -g azure-funct
 cp src/AdrMcp.Functions/local.settings.json.example src/AdrMcp.Functions/local.settings.json
 ```
 
-`local.settings.json` is git-ignored (`.gitignore`). The example uses **InMemory** persistence (no Cosmos needed) and Azurite for Blob/Queue. Keep `Auth__Mode=FunctionKey`; locally no key is required. Never paste real connection strings or keys into this file; for Cosmos use the emulator connection string or `Cosmos__AccountEndpoint` with `az login` (DefaultAzureCredential).
+`local.settings.json` is git-ignored (`.gitignore`). The example uses **InMemory** persistence (no Cosmos needed) and Azurite for Blob/Queue. Keep `Auth__Mode=FunctionKey` for a run on your own machine; locally no key is required. This is the local setting only: the deployed dev environment (`adr-dev`) runs in `EntraBuiltIn` mode, see "Deploy" below. Never paste real connection strings or keys into this file; for Cosmos use the emulator connection string or `Cosmos__AccountEndpoint` with `az login` (DefaultAzureCredential).
 
 ## Start Azurite
 
@@ -127,7 +127,9 @@ azd deploy api            # builds src/AdrMcp.Functions, publishes to the Flex C
 azd up                    # provision + deploy in one step
 ```
 
-Retrieve connection details (never commit the key):
+**Which sign-in mode `adr-dev` uses.** The `adr-dev` environment is deployed by the `ci-cd` workflow, which reads `ADR_AUTH_MODE` from a GitHub variable (`FunctionKey` when the variable is not set, see [Tests and CI](07-tests-and-ci.md)). In the successful run of 2026-10-26 ([run 40386017357](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/actions/runs/40386017357)) the deploy job ran in `EntraBuiltIn` mode: it created `rg-adr-dev-scus-01` and `func-adr-dev-scus-01`, the step "Verify unauthenticated MCP calls are rejected (Entra mode)" passed, and the key-based smoke test was skipped. So the key commands below do not apply to `adr-dev`; clients sign in with Microsoft Entra ID ([Connecting Claude](06-claude-connection.md)). Not yet verified: that each MCP client signs in to `adr-dev`, and whether the optional in-app token check is on there ([Entra sign-in](11-entra-sign-in.md)).
+
+`FunctionKey` mode only: retrieve connection details (never commit the key):
 
 ```bash
 APP=$(azd env get-value AZURE_FUNCTION_APP_NAME); RG=$(azd env get-value AZURE_RESOURCE_GROUP)
@@ -135,7 +137,7 @@ az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o 
 echo "MCP endpoint: $(azd env get-value MCP_ENDPOINT)"
 ```
 
-Post-deployment smoke test:
+Post-deployment smoke test (`FunctionKey` mode only; in `EntraBuiltIn` mode pass a user's access token as `ADR_MCP_BEARER` instead, see [Connecting Claude](06-claude-connection.md#smoke-test-against-an-entra-protected-server)):
 
 ```bash
 ADR_MCP_KEY="$(az functionapp keys list -g "$RG" -n "$APP" --query systemKeys.mcp_extension -o tsv)" python3 scripts/smoke-test.py --url "$(azd env get-value MCP_ENDPOINT)"
@@ -277,7 +279,7 @@ Use **one PowerShell window** (Windows PowerShell 5.1 or PowerShell 7) from step
 
 12. **Approve the deployment.** On the run, choose `Review deployments`, tick `adr-dev`, choose `Approve and deploy`. If GitHub does not offer the button for a run you started yourself, the environment is set to prevent self-review: ask a second reviewer, or switch that setting off for the run under the [environment settings](https://github.com/saulpatinojr/Proj-Cloud_Architect_Sidekick_MCP/settings/environments) and switch it back on afterwards.
 
-13. **Wait for the run to finish** (about 10 to 15 minutes). The `Preview` step shows a what-if plan (a dry-run list of what the deployment would do); it should list only creates, in `rg-adr-dev-scus-01`. The run ends with `Wait for the app to start` and, in `EntraBuiltIn` mode, `Verify unauthenticated MCP calls are rejected`, both green. If a step is red, open its log; see "If the build in part B fails" below before you continue.
+13. **Wait for the run to finish** (about 10 to 15 minutes). The `Preview` step shows a what-if plan (a dry-run list of what the deployment would do); it should list only creates, in `rg-adr-dev-scus-01`. The run ends with `Wait for the app to start` and, in `EntraBuiltIn` mode, `Verify unauthenticated MCP calls are rejected (Entra mode)`, both green. If a step is red, open its log; see "If the build in part B fails" below before you continue.
 
 14. **Check the new group.**
 

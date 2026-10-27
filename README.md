@@ -46,7 +46,7 @@ flowchart LR
 ```
 
 - **Transport**: Streamable HTTP at `https://<app>.azurewebsites.net/runtime/webhooks/mcp` (SSE fallback at `/sse`).
-- **Auth**: `mcp_extension` system key header by default, or Azure built-in Entra authentication (preview) for OAuth-based clients.
+- **Auth**: Azure built-in Entra authentication (preview) for OAuth-based clients (`EntraBuiltIn`), or the `mcp_extension` system key header (`FunctionKey`). The code default is the key; the dev environment (`adr-dev`) is deployed in `EntraBuiltIn` mode (observed in the `ci-cd` run of 2026-10-26).
 - **Identity**: user-assigned managed identity for every data-plane call; no connection strings, no account keys.
 - **Hosting**: Azure Functions **Flex Consumption**, .NET 10 (LTS) isolated worker, MCP extension 1.6.0 (GA).
 
@@ -89,7 +89,7 @@ azd up                                    # Bicep provision + deploy
 
 `azd up` creates: resource group, user-assigned identity, Storage (blob + queue, shared keys disabled), Cosmos DB serverless, Key Vault, Log Analytics + Application Insights, the Flex Consumption Function App, and least-privilege role assignments. Every name follows one convention, `<abbreviation>-<workload>-<environment>-<region code>-<nn>` (for `southcentralus`: `rg-adr-dev-scus-01`, `func-adr-dev-scus-01`, `kv-adr-dev-scus-01`, `stadrdevscus01`), see [ADR-0009](docs/adr/ADR-0009-azure-naming-convention.md). Optional flags: `ADR_AUTH_MODE=EntraBuiltIn`, `ADR_PRIVATE_NETWORKING=true`, `ADR_DEFENDER_STORAGE=true`, and `ADR_NAME_SUFFIX=<letters or digits>` only when a globally unique name is already taken.
 
-Post-deploy check (the key is read from Azure at run time and never stored in the repo):
+Post-deploy check in `FunctionKey` mode (the key is read from Azure at run time and never stored in the repo). In `EntraBuiltIn` mode, which the dev environment uses, the key does not apply: the `ci-cd` deploy job checks that a call with no token gets HTTP 401 instead, and the tool smoke test needs a user's access token ([how](docs/06-claude-connection.md#smoke-test-against-an-entra-protected-server)):
 
 ```bash
 RG=$(azd env get-value AZURE_RESOURCE_GROUP); APP=$(azd env get-value AZURE_FUNCTION_APP_NAME)
@@ -101,14 +101,16 @@ Full walkthrough: [Local development & deployment](docs/05-local-dev-and-deploy.
 
 ## Connect Claude
 
-| Client | How |
-|---|---|
-| **Claude Code** | `claude mcp add --transport http adr https://<app>.azurewebsites.net/runtime/webhooks/mcp --header "x-functions-key: ${ADR_MCP_KEY}"` or commit `.mcp.json` (already included; reads `ADR_MCP_URL` / `ADR_MCP_KEY` from your environment) |
-| **Claude.ai / Desktop / Cowork / mobile** | *Customize → Connectors → Add custom connector* with the MCP URL; choose **request headers** (`x-functions-key`) or **custom OAuth client** for Entra. Claude connects from Anthropic's cloud, so the endpoint must be reachable from the internet. |
-| **VS Code / Copilot** | `.vscode/mcp.json` (prompts for host and key) |
-| **Anything else** | Any MCP client that speaks Streamable HTTP |
+The way to connect depends on the server's sign-in mode. The dev environment (`adr-dev`) runs in `EntraBuiltIn` mode, so a client signs in with Microsoft Entra ID. The shared `x-functions-key` header applies only to a server in `FunctionKey` mode, such as a local run. That each client below can sign in to `adr-dev` is **not yet verified**.
 
-Details, OAuth notes and upload guidance: [Connecting Claude](docs/06-claude-connection.md). Signing in with Microsoft Entra ID instead of a shared key (settings, what is verified and what is not, and a real-tenant runbook): [Entra sign-in](docs/11-entra-sign-in.md).
+| Client | How (`EntraBuiltIn` mode, the dev environment) | How (`FunctionKey` mode only) |
+|---|---|---|
+| **Claude Code** | `claude mcp add --transport http adr https://<app>.azurewebsites.net/runtime/webhooks/mcp --client-id <public-client-app-id> --callback-port 8976`, then `/mcp` to sign in ([steps](docs/06-claude-connection.md#claude-code-cli)) | `claude mcp add --transport http adr https://<app>.azurewebsites.net/runtime/webhooks/mcp --header "x-functions-key: ${ADR_MCP_KEY}"` or the committed `.mcp.json`, which sends only the key header (reads `ADR_MCP_URL` / `ADR_MCP_KEY` from your environment) |
+| **Claude.ai / Desktop / Cowork / mobile** | *Customize → Connectors → Add custom connector* with the MCP URL; choose **custom OAuth client** for Entra. Claude connects from Anthropic's cloud, so the endpoint must be reachable from the internet. | same steps, but choose **request headers** (`x-functions-key`) |
+| **VS Code / Copilot** | sign in with Entra using Microsoft's built-in VS Code client app, which must be on the allow-list ([Entra sign-in](docs/11-entra-sign-in.md)) | `.vscode/mcp.json` (prompts for host and key) |
+| **Anything else** | Any MCP client that speaks Streamable HTTP and supports OAuth with a pre-registered client | Any MCP client that speaks Streamable HTTP and can send a header |
+
+Details, OAuth notes and upload guidance: [Connecting Claude](docs/06-claude-connection.md). The dev environment signs in with Microsoft Entra ID instead of a shared key; settings, what is verified and what is not, and a real-tenant runbook: [Entra sign-in](docs/11-entra-sign-in.md).
 
 ## Tools
 

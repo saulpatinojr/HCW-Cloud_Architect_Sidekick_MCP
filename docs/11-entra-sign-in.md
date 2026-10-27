@@ -219,7 +219,7 @@ $env:ADR_MCP_BEARER = $good; python scripts/smoke-test.py --url "$base/runtime/w
 
 6. Owner-only check (optional, needs a second sandbox user): sign in as that user with `az login --tenant $tenant --scope "api://$app/user_impersonation"` and request a token as in step 5. Expect `AADSTS50105` (not assigned). Then sign back in as yourself.
 
-7. Deployed app instead of local: deploy with `ADR_AUTH_MODE=EntraBuiltIn`, the server app ID, the allowed client IDs and `ADR_ENTRA_VALIDATE_IN_APP=true` (docs/05), set `$base` to `https://<app host>` and repeat step 5. Lines 1 to 3 are then answered by Easy Auth (still 401); line 4 onward proves that Easy Auth lets the token through and that the app accepts it. `adr-dev` already runs with `ADR_AUTH_MODE=EntraBuiltIn` (see the Status line at the top); the in-app check is the part that is not yet verified there. If any line differs, set `ADR_ENTRA_VALIDATE_IN_APP` back to `false` and provision again.
+7. Deployed app instead of local: deploy with `ADR_AUTH_MODE=EntraBuiltIn`, the server app ID, the allowed client IDs and `ADR_ENTRA_VALIDATE_IN_APP=true` (docs/05), set `$base` to `https://<app host>` and repeat step 5. Lines 1 to 3 are then answered by Easy Auth (still 401); line 4 onward proves that Easy Auth lets the token through and that the app accepts it. Run this step in a staging or sandbox deployment, not in `adr-dev`. `adr-dev` already runs with `ADR_AUTH_MODE=EntraBuiltIn` (see the Status line at the top), and its in-app check is not yet verified. If any line differs, set `ADR_ENTRA_VALIDATE_IN_APP` back to `false` and provision again.
 
 8. Clean up. Stop windows 2 and 3 with Ctrl+C, then:
 

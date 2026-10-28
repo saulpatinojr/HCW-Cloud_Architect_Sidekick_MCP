@@ -180,6 +180,9 @@ jobs:
       ADR_ENTRA_TENANT_ID: ${{ vars.ADR_ENTRA_TENANT_ID }}   # optional; empty = deployment tenant
       ADR_ENTRA_ALLOWED_CLIENT_IDS: ${{ vars.ADR_ENTRA_ALLOWED_CLIENT_IDS }}   # EntraBuiltIn: comma-separated client IDs allowed to call
       ADR_ENTRA_VALIDATE_IN_APP: ${{ vars.ADR_ENTRA_VALIDATE_IN_APP || 'false' }}   # EntraBuiltIn: also verify the bearer token inside the app (ADR-0008); off until the runbook passes
+      # EntraBuiltIn, opt-in: when the repository variable ADR_ENTRA_PIPELINE_READ is true, this job's own federated identity (AZURE_CLIENT_ID) is
+      # allowed to call the server as an application (read-only by rule in the app) and the post-deploy smoke test runs with its token (docs/11).
+      ADR_ENTRA_PIPELINE_CLIENT_ID: ${{ vars.ADR_ENTRA_PIPELINE_READ == 'true' && vars.AZURE_CLIENT_ID || '' }}
       ADR_ENTRA_RESOURCE_URI: ${{ vars.ADR_ENTRA_RESOURCE_URI }}   # optional: canonical MCP URL on a custom domain; empty = the default host name
       ADR_NAME_SUFFIX: ${{ vars.ADR_NAME_SUFFIX }}   # optional: appended to the four globally unique names when one is taken (ADR-0009); empty = none
     steps:
@@ -192,6 +195,9 @@ jobs:
           fi
           if [ "$ADR_ENTRA_VALIDATE_IN_APP" = "true" ] && [ "$ADR_AUTH_MODE" != "EntraBuiltIn" ]; then
             echo "::error::ADR_ENTRA_VALIDATE_IN_APP=true needs ADR_AUTH_MODE=EntraBuiltIn (it would otherwise be ignored)"; exit 1
+          fi
+          if [ -n "$ADR_ENTRA_PIPELINE_CLIENT_ID" ] && [ "$ADR_AUTH_MODE" != "EntraBuiltIn" ]; then
+            echo "::error::ADR_ENTRA_PIPELINE_READ=true needs ADR_AUTH_MODE=EntraBuiltIn (there is no application sign-in in FunctionKey mode)"; exit 1
           fi
           if [ -n "$missing" ]; then echo "::error::ADR_DEPLOY_ENABLED is true but these variables are empty:$missing"; exit 1; fi
       - uses: actions/checkout@v7
@@ -253,4 +259,16 @@ jobs:
           URL=$(azd env get-value MCP_ENDPOINT)
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' -d '{}' "$URL" || true)
           [ "$code" = "401" ] || { echo "::error::Unauthenticated POST to the MCP endpoint returned $code, expected 401. Check App Service Authentication (authsettingsV2)."; exit 1; }
-          echo "::notice title=Tool smoke test skipped::EntraBuiltIn needs a user token; run ADR_MCP_BEARER=<token> scripts/smoke-test.py manually (docs/06-claude-connection.md)."
+          if [ -z "$ADR_ENTRA_PIPELINE_CLIENT_ID" ]; then
+            echo "::notice title=Tool smoke test skipped::EntraBuiltIn needs a token; set the repository variable ADR_ENTRA_PIPELINE_READ=true after the runbook (docs/11-entra-sign-in.md), or run ADR_MCP_BEARER=<token> scripts/smoke-test.py yourself (docs/06-claude-connection.md)."
+          fi
+      - name: Read-only smoke test as the pipeline (Entra mode, opt-in)
+        # The job's federated identity holds the application role Adr.Reader.Application on the server app (docs/11). Its token has no user,
+        # so the app caps it at Reader: the script proves the read tools answer and that a write is refused with FORBIDDEN.
+        if: env.ADR_AUTH_MODE == 'EntraBuiltIn' && env.ADR_ENTRA_PIPELINE_CLIENT_ID != ''
+        run: |
+          URL=$(azd env get-value MCP_ENDPOINT)
+          TOKEN=$(az account get-access-token --scope "api://$ADR_ENTRA_CLIENT_ID/.default" --query accessToken -o tsv)
+          [ -n "$TOKEN" ] || { echo "::error::no access token for the server app; is the pipeline identity assigned Adr.Reader.Application and allowed as a client?"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          ADR_MCP_BEARER="$TOKEN" python3 scripts/smoke-test.py --url "$URL" --read-only   # token via environment, not the command line

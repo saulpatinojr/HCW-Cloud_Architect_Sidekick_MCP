@@ -79,10 +79,15 @@ public sealed class AuthOptions
     public string StaticPrincipalId { get; set; } = "function-key-client";
     /// <summary>Roles for the static principal. Empty means Reader only (least privilege). NOTE: configuration arrays append to defaults, so keep defaults empty.</summary>
     public string[] StaticRoles { get; set; } = Array.Empty<string>();
-    /// <summary>Entra app role value -> ADR role. Defaults map Adr.Reader/Adr.Author/Adr.Approver/Adr.Admin.</summary>
+    /// <summary>
+    /// The one app role an application (a pipeline signing in with client credentials, no user) may hold: read-only by owner decision
+    /// (docs/12, A4). <c>scripts/entra/app-roles.json</c> declares it with <c>allowedMemberTypes: ["Application"]</c>; the four user roles are users only.
+    /// </summary>
+    public const string ApplicationReaderRole = "Adr.Reader.Application";
+    /// <summary>Entra app role value -> ADR role. Defaults map Adr.Reader/Adr.Author/Adr.Approver/Adr.Admin for people and <see cref="ApplicationReaderRole"/> for pipelines.</summary>
     public Dictionary<string, string> AppRoleMap { get; set; } = new()
     {
-        ["Adr.Reader"] = "Reader", ["Adr.Author"] = "Author", ["Adr.Approver"] = "Approver", ["Adr.Admin"] = "Admin"
+        ["Adr.Reader"] = "Reader", ["Adr.Author"] = "Author", ["Adr.Approver"] = "Approver", ["Adr.Admin"] = "Admin", [ApplicationReaderRole] = "Reader"
     };
     /// <summary>Entra tenant id (tid claim) -> ADR tenant id. Any entry here or in <see cref="Tenants"/> enrolls tenants: others are refused.
     /// Keys are GUIDs, which Linux app setting names cannot hold; use <see cref="Tenants"/> in Azure.</summary>
@@ -128,7 +133,7 @@ public sealed class EntraTokenOptions
     public string[] AllowedClientIds { get; set; } = Array.Empty<string>();
     /// <summary>Scope values (short names) of which a delegated token must carry one. Empty means <see cref="DefaultScope"/>.</summary>
     public string[] RequiredScopes { get; set; } = Array.Empty<string>();
-    /// <summary>Accept tokens that have no <c>scp</c> claim (client-credentials callers) when they carry an app role. Off: delegated user tokens only.</summary>
+    /// <summary>Accept tokens that have no <c>scp</c> claim (client-credentials callers, such as the deploy pipeline) when they carry an app role. Off: delegated user tokens only. An application is Reader at most, whatever its roles map to (<see cref="EntraRoleMapper"/>).</summary>
     public bool AllowApplicationTokens { get; set; }
     /// <summary>Sign-in host name only; builds the issuer and the key address. Sovereign clouds use their own host.</summary>
     public string AuthorityHost { get; set; } = DefaultAuthorityHost;

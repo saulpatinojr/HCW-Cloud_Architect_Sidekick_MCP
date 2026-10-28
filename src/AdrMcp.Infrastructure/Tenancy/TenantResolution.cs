@@ -22,15 +22,21 @@ public sealed record PlatformAuthentication(bool Enabled)
         => new(string.Equals(configuration[EnabledSetting], "true", StringComparison.OrdinalIgnoreCase));
 }
 
-/// <summary>Maps the app role values in a verified token (or platform principal) to ADR roles through <c>Auth:AppRoleMap</c>. One place, used by tool calls and the sign-in check.</summary>
+/// <summary>
+/// Maps the app role values in a verified token (or platform principal) to ADR roles through <c>Auth:AppRoleMap</c>. One place, used by tool calls and the sign-in check.
+/// An application principal (a token with no user behind it: client credentials, no <c>scp</c>) is <see cref="Role.Reader"/> at most, whatever
+/// its roles map to: the owner decided pipelines read and never run analysis, upload evidence or change anything (docs/12, A4). Entra only
+/// issues <see cref="AuthOptions.ApplicationReaderRole"/> to applications, so this is a second lock, not the only one.
+/// </summary>
 public static class EntraRoleMapper
 {
-    public static HashSet<Role> Map(AuthOptions options, IEnumerable<string> roleClaims)
+    public static HashSet<Role> Map(AuthOptions options, IEnumerable<string> roleClaims, bool isApplication = false)
     {
         var roles = new HashSet<Role>();
         foreach (var rc in roleClaims) if (options.AppRoleMap.TryGetValue(rc, out var mappedRole) && Enum.TryParse<Role>(mappedRole, true, out var role)) roles.Add(role);
         var grantsDefault = !string.Equals(options.DefaultRoleWhenNoAppRoles, "None", StringComparison.OrdinalIgnoreCase);
         if (roles.Count == 0 && grantsDefault && Enum.TryParse<Role>(options.DefaultRoleWhenNoAppRoles, true, out var def)) roles.Add(def);
+        if (isApplication && roles.Count > 0) return new HashSet<Role> { Role.Reader };
         return roles;
     }
 }
@@ -101,10 +107,11 @@ public sealed class HeaderTenantResolver : ITenantResolver
         }
         var p = result.Principal!;
         if (!_tenants.TryResolveTenant(p.TenantId, out var tenantId)) throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
-        var roles = EntraRoleMapper.Map(_o, p.Roles);
+        var isApplication = p.Scopes.Count == 0;   // no delegated scope: the client itself is the caller (the validator only lets this through when allowed)
+        var roles = EntraRoleMapper.Map(_o, p.Roles, isApplication);
         var workspaces = _tenants.WorkspacesFor(tenantId, _o.DefaultWorkspaceId);
         var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
-        var principalId = p.Scopes.Count == 0 ? $"app:{p.ClientAppId}" : $"user:{p.ObjectId}";
+        var principalId = isApplication ? $"app:{p.ClientAppId}" : $"user:{p.ObjectId}";
         return new TenantContext(tenantId, principalId, p.Display ?? p.ObjectId, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
     }
 
@@ -135,10 +142,12 @@ public sealed class HeaderTenantResolver : ITenantResolver
 
         if (!_tenants.TryResolveTenant(tid, out var tenantId)) throw new DomainException(ErrorCodes.Forbidden, "This Entra tenant is not enrolled.");
         var roleClaims = principal.Claims?.Where(c => c.Typ is "roles" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role").Select(c => c.Val) ?? Array.Empty<string>();
-        var roles = EntraRoleMapper.Map(_o, roleClaims);
+        // A client-credentials token names its application (azp/appid) and carries no delegated scope: the application is the caller.
+        var isApplication = appId is not null && Claim("scp", "http://schemas.microsoft.com/identity/claims/scope") is null;
+        var roles = EntraRoleMapper.Map(_o, roleClaims, isApplication);
         var workspaces = _tenants.WorkspacesFor(tenantId, _o.DefaultWorkspaceId);
         var defaultWs = workspaces.Contains(_o.DefaultWorkspaceId) || workspaces.Contains("*") ? _o.DefaultWorkspaceId : workspaces.First();
-        return new TenantContext(tenantId, appId is not null && oid == appId ? $"app:{appId}" : $"user:{oid}", display, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
+        return new TenantContext(tenantId, isApplication ? $"app:{appId}" : $"user:{oid}", display, roles, workspaces, defaultWs, "EntraBuiltIn", correlationId, sessionId);
     }
 
     private static string? Get(IReadOnlyDictionary<string, string> headers, string name)
@@ -159,7 +168,7 @@ public sealed class RoleAuthorizationService : IAuthorizationService
     public void Require(TenantContext ctx, Permission permission)
     {
         if (ctx.Roles.Count == 0)
-            throw new ForbiddenException("No ADR role is assigned to this principal. Assign an app role (Adr.Reader, Adr.Author, Adr.Approver or Adr.Admin) on the server's app registration.");
+            throw new ForbiddenException("No ADR role is assigned to this principal. Assign an app role (Adr.Reader, Adr.Author, Adr.Approver or Adr.Admin for a person; Adr.Reader.Application for a pipeline) on the server's app registration.");
         if (!RolePermissions.Has(ctx.Roles, permission))
             throw new ForbiddenException($"Permission '{permission}' requires a role you do not have ({string.Join(", ", ctx.Roles)}).");
     }

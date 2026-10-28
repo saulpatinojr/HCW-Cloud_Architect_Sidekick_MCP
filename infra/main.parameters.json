@@ -11,6 +11,7 @@
     "entraClientId": { "value": "${ADR_ENTRA_CLIENT_ID}" },
     "entraTenantId": { "value": "${ADR_ENTRA_TENANT_ID}" },
     "entraAllowedClientIds": { "value": "${ADR_ENTRA_ALLOWED_CLIENT_IDS}" },
+    "entraPipelineClientId": { "value": "${ADR_ENTRA_PIPELINE_CLIENT_ID}" },
     "entraValidateInApp": { "value": "${ADR_ENTRA_VALIDATE_IN_APP=false}" },
     "entraResourceUri": { "value": "${ADR_ENTRA_RESOURCE_URI}" },
     "enablePrivateNetworking": { "value": "${ADR_PRIVATE_NETWORKING=false}" },

@@ -48,7 +48,10 @@ def main():
     ap.add_argument("--key", default=os.environ.get("ADR_MCP_KEY"), help="mcp_extension system key (x-functions-key); defaults to $ADR_MCP_KEY so it stays off the command line")
     ap.add_argument("--bearer", default=os.environ.get("ADR_MCP_BEARER"), help="Entra access token for built-in auth; defaults to $ADR_MCP_BEARER so it stays off the command line")
     ap.add_argument("--write", action="store_true", help="also create a smoke-test ADR (mutating)")
+    ap.add_argument("--read-only", action="store_true", help="the pipeline's view: read tools only, and prove that a write is refused with FORBIDDEN (for an application token holding Adr.Reader.Application)")
     a = ap.parse_args()
+    if a.write and a.read_only:
+        ap.error("--write and --read-only exclude each other")
 
     headers = {}
     if a.key: headers["x-functions-key"] = a.key
@@ -84,16 +87,29 @@ def main():
             print(f"FAIL tool {t['name']} has no description or schema"); sys.exit(1)
     print("OK every tool advertises a description and input schema")
 
-    def tool(name, args):
+    def envelope(name, args):
         res = call("tools/call", {"name": name, "arguments": args})
         text = next((c["text"] for c in res.get("content", []) if c.get("type") == "text"), None)
-        env = json.loads(text) if text else res.get("structuredContent")
+        return json.loads(text) if text else res.get("structuredContent")
+
+    def tool(name, args):
+        env = envelope(name, args)
         if not env or not env.get("ok"):
             print(f"FAIL {name}: {json.dumps(env)[:500]}"); sys.exit(1)
         return env["data"]
 
     data = tool("adr_list", {"take": 1})
     print(f"OK adr_list: {len(data['items'])} item(s) returned")
+    if a.read_only:
+        data = tool("adr_search", {"query": "smoke", "take": 1})
+        print(f"OK adr_search: {len(data.get('hits', []))} hit(s) returned")
+        refused = envelope("adr_create", {"fields": {"title": "Pipeline must not write", "decision": "refused"}})
+        code = (refused or {}).get("error", {}).get("code")
+        if not refused or refused.get("ok") or code != "FORBIDDEN":
+            print(f"FAIL adr_create was not refused with FORBIDDEN for the read-only caller: {json.dumps(refused)[:500]}"); sys.exit(1)
+        print("OK adr_create refused with FORBIDDEN: the caller is read-only")
+        print("SMOKE TEST PASSED (read-only)")
+        return
     data = tool("technology_detect", {"files": [{"path": "smoke/package.json", "content": json.dumps({"dependencies": {"express": "^4.19.2"}})}]})
     print(f"OK technology_detect: {[t['name'] for t in data['technologies']]}")
     data = tool("adr_safety_review", {"inline": {"title": "Smoke", "decision": "Use basic auth over http://example.internal", "rationale": "smoke", "persist": False}})

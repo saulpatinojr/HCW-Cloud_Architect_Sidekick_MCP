@@ -30,5 +30,13 @@
     "id": "e9b33a7a-9254-469c-bff7-96ecbd5cfb62",
     "isEnabled": true,
     "value": "Adr.Admin"
+  },
+  {
+    "allowedMemberTypes": [ "Application" ],
+    "description": "Read decisions, jobs and decision memory as an application with no signed-in user (the deploy pipeline). The server treats every application as Reader at most.",
+    "displayName": "ADR Reader (application)",
+    "id": "5b2e9c3d-7a41-4f68-9d0c-3e8f1a6b2c47",
+    "isEnabled": true,
+    "value": "Adr.Reader.Application"
   }
 ]

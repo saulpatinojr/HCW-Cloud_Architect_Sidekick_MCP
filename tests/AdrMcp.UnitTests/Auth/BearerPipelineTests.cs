@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AdrMcp.Application.Abstractions;
+using AdrMcp.Application.Options;
 using AdrMcp.Domain.Errors;
 using AdrMcp.Infrastructure.Auth;
 using AdrMcp.UnitTests.Support;
@@ -243,9 +244,31 @@ public class BearerPipelineTests : IDisposable
     [Fact]
     public async Task An_application_token_is_refused_by_default_and_works_with_its_app_role_once_allowed()
     {
-        var appToken = _idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray("Adr.Reader"); }));
+        var appToken = _idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray(AuthOptions.ApplicationReaderRole); }));
         Assert.Equal(ErrorCodes.Forbidden, Code(await Host().CallAsync("adr_list", new { }, Headers(appToken))));
-        Assert.True((await Host(s => s["Auth:Entra:AllowApplicationTokens"] = "true").CallAsync("adr_list", new { }, Headers(appToken))).GetProperty("ok").GetBoolean());
+        var host = Host(s => s["Auth:Entra:AllowApplicationTokens"] = "true");
+        Assert.True((await host.CallAsync("adr_list", new { }, Headers(appToken))).GetProperty("ok").GetBoolean());
+        Assert.True((await host.CallAsync("adr_search", new { query = "anything" }, Headers(appToken))).GetProperty("ok").GetBoolean());
+        // Read-only by owner decision (docs/12 A4): the pipeline can neither write nor run analysis.
+        Assert.Equal(ErrorCodes.Forbidden, Code(await host.CallAsync("adr_create", new { fields = new { title = "No", decision = "D" } }, Headers(appToken))));
+        Assert.Equal(ErrorCodes.Forbidden, Code(await host.CallAsync("adr_safety_review", new { inline = new { title = "No", decision = "D", persist = false } }, Headers(appToken))));
+    }
+
+    [Fact]
+    public async Task An_application_is_Reader_at_most_whatever_role_its_token_claims()
+    {
+        // Entra only issues Adr.Reader.Application to applications; should a user role ever reach an application token, the app still caps it.
+        var host = Host(s => s["Auth:Entra:AllowApplicationTokens"] = "true");
+        var adminApp = _idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray("Adr.Admin", "Adr.Author"); }));
+        Assert.True((await host.CallAsync("adr_list", new { }, Headers(adminApp))).GetProperty("ok").GetBoolean());
+        Assert.Equal(ErrorCodes.Forbidden, Code(await host.CallAsync("adr_create", new { fields = new { title = "No", decision = "D" } }, Headers(adminApp))));
+        // A person with the same roles is not capped.
+        var adminUser = _idp.Mint(_idp.Claims(c => c["roles"] = new JsonArray("Adr.Admin")));
+        Assert.True((await host.CallAsync("adr_create", new { fields = new { title = "Yes", decision = "D" } }, Headers(adminUser))).GetProperty("ok").GetBoolean());
+        // The application role on a user token grants a person Reader, nothing more (the map says Reader).
+        var readerUser = _idp.Mint(_idp.Claims(c => c["roles"] = new JsonArray(AuthOptions.ApplicationReaderRole)));
+        Assert.True((await host.CallAsync("adr_list", new { }, Headers(readerUser))).GetProperty("ok").GetBoolean());
+        Assert.Equal(ErrorCodes.Forbidden, Code(await host.CallAsync("adr_create", new { fields = new { title = "No", decision = "D" } }, Headers(readerUser))));
     }
 
     [Fact]

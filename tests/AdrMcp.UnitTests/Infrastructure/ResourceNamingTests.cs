@@ -378,6 +378,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("nameSuffix", "lower-case letters and digits only")]
     [InlineData("reserved-workload", "reserved for the Obsidian vault server")]
     [InlineData("reserved-workload-prefix", "reserved for the Obsidian vault server")]
+    [InlineData("reserved-workload-prefix-of-vault", "reserved for the Obsidian vault server")]
     public async Task A_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"reject:{parameter}");
@@ -673,6 +674,7 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));   // kv-abcdefgh-dev-scus-01abcd = 27 characters
         scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("vault")));   // the vault server's workload
         scenarios["reject:reserved-workload-prefix"] = Parameters("southcentralus", ("workloadName", Quote("vaultx")));   // the whole prefix is reserved, not one word
+        scenarios["reject:reserved-workload-prefix-of-vault"] = InEnvironment("tdev", Parameters("southcentralus", ("workloadName", Quote("vaul")), ("environmentShort", Quote("tdev"))));   // vaul + tdev would spell stvaultdevscus01
 
         // The vault server's template (ADR-0010): the same guards, its own names. Its defaults are workloadName 'vault' and environmentShort 'dev'.
         foreach (var region in regions) scenarios[$"vault:region:{region}"] = Parameters(region);

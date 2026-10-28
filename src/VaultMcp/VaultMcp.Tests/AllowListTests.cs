@@ -146,12 +146,15 @@ public sealed class AllowListTests : IDisposable
 
         Assert.True(File.Exists(fifo), "the pipe passes File.Exists, which is the point of the test");
         var store = new LocalFolderVaultStore(_vault.Root);
-        var read = store.ReadAsync("Work/pipe.md", _ct);
+        // Opening a pipe would block before the first await, so the calls run on the pool: a regression then fails
+        // this test by timeout instead of hanging it.
+        var read = Task.Run(() => store.ReadAsync("Work/pipe.md", _ct), _ct);
         var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(10), _ct));
         Assert.Same(read, finished);
         Assert.Null(await read);
 
-        var search = _vault.Service().SearchAsync("cosmos", 50, _ct);
+        var service = _vault.Service();
+        var search = Task.Run(() => service.SearchAsync("cosmos", 50, _ct), _ct);
         finished = await Task.WhenAny(search, Task.Delay(TimeSpan.FromSeconds(10), _ct));
         Assert.Same(search, finished);
         Assert.NotEmpty((await search).Hits);

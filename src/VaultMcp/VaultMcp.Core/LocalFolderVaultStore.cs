@@ -70,12 +70,13 @@ public sealed class LocalFolderVaultStore : IVaultStore
     public const long MaxNoteBytes = 2 * 1024 * 1024;
 
     /// <summary>
-    /// True only for an existing, non-empty regular file of at most <see cref="MaxNoteBytes"/> whose every path
+    /// True only for an existing, non-directory entry of 1 to <see cref="MaxNoteBytes"/> bytes whose every path
     /// component below the root is a real directory or file, not a symbolic link or other reparse point.
     /// <see cref="Path.GetFullPath(string)"/> is lexical, so a link inside the vault could otherwise point a read at
-    /// a folder outside it. The size floor matters on Unix: <see cref="File.Exists(string)"/> is true for a named
-    /// pipe, socket or device as well, and opening a pipe blocks until a writer appears; those report a size of 0,
-    /// so refusing empty entries keeps them from ever being opened. An empty note has nothing to index anyway.
+    /// a folder outside it. The size floor is a filter, not a file-type check (.NET exposes none on Unix): on Unix
+    /// <see cref="File.Exists(string)"/> is also true for a named pipe, socket or device, and opening a pipe blocks
+    /// until a writer appears; those report a size of 0, so refusing empty entries keeps them from ever being
+    /// opened. An empty note has nothing to index anyway.
     /// </summary>
     internal bool IsRegularFileWithoutLinks(string full)
     {

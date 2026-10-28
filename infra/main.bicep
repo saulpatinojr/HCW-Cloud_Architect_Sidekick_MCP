@@ -16,7 +16,7 @@ param location string
 
 @minLength(2)
 @maxLength(8)
-@description('Short workload name used in every resource name: lower-case letters and digits only (ADR-0009).')
+@description('Short workload name used in every resource name: lower-case letters and digits only, not starting with "vault" (ADR-0009; that prefix belongs to the Obsidian vault server\'s template).')
 param workloadName string = 'adr'
 
 @minLength(2)
@@ -102,8 +102,8 @@ var nameProblem = empty(regionCode)
   ? 'Region "${location}" has no short code. Add it to infra/region-codes.json and to the region table in docs/adr/ADR-0009-azure-naming-convention.md, then deploy again.'
   : !(isLowerAlphanumeric(workloadName) && isLowerAlphanumeric(environmentShort) && isLowerAlphanumeric(nameSuffix))
     ? 'workloadName, environmentShort and nameSuffix may hold lower-case letters and digits only (ADR-0009).'
-    : workloadName == 'vault'
-      ? 'workloadName "vault" belongs to the Obsidian vault server (infra/vault/main.bicep): this deployment would take over its resource names. Choose another ADR_WORKLOAD_NAME.'
+    : startsWith(workloadName, 'vault')
+      ? 'workloadName "${workloadName}" is reserved for the Obsidian vault server (infra/vault/main.bicep requires names that start with "vault"), so that the two deployments can never share a resource group or a global name. Choose another ADR_WORKLOAD_NAME (ADR-0009).'
     : !(environmentName == environmentShort || endsWith(environmentName, '-${environmentShort}'))
       ? 'environmentName "${environmentName}" must end with "-${environmentShort}". The azd environment name is not part of any resource name, so two azd environments in one subscription and region with the same environmentShort would get the same names and overwrite each other. Name the azd environment adr-<short> (for example adr-prod) and set ADR_ENVIRONMENT_SHORT to <short> for it (ADR-0009).'
       : length(keyVaultName) > 24

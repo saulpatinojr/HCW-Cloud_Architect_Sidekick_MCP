@@ -349,7 +349,8 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("location", "has no short code")]
     [InlineData("environmentName", "must end with")]
     [InlineData("keyvault-length", "longer than the 24 characters")]
-    [InlineData("reserved-workload", "belongs to the ADR server")]
+    [InlineData("reserved-workload", "must start with \"vault\"")]
+    [InlineData("custom-workload", "must start with \"vault\"")]
     public async Task A_vault_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"vault:reject:{parameter}");
@@ -375,7 +376,8 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("workloadName", "lower-case letters and digits only")]
     [InlineData("environmentShort", "lower-case letters and digits only")]
     [InlineData("nameSuffix", "lower-case letters and digits only")]
-    [InlineData("reserved-workload", "belongs to the Obsidian vault server")]
+    [InlineData("reserved-workload", "reserved for the Obsidian vault server")]
+    [InlineData("reserved-workload-prefix", "reserved for the Obsidian vault server")]
     public async Task A_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"reject:{parameter}");
@@ -670,6 +672,7 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["reject:nameSuffix"] = Parameters("southcentralus", ("nameSuffix", Quote("b-")));
         scenarios["reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));   // kv-abcdefgh-dev-scus-01abcd = 27 characters
         scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("vault")));   // the vault server's workload
+        scenarios["reject:reserved-workload-prefix"] = Parameters("southcentralus", ("workloadName", Quote("vaultx")));   // the whole prefix is reserved, not one word
 
         // The vault server's template (ADR-0010): the same guards, its own names. Its defaults are workloadName 'vault' and environmentShort 'dev'.
         foreach (var region in regions) scenarios[$"vault:region:{region}"] = Parameters(region);
@@ -678,8 +681,9 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["vault:long:westcentralus"] = InEnvironment("prod", Parameters("westcentralus", ("workloadName", Quote("vaultmc")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));   // kv-vaultmc-prod-wcus-01b = 24
         scenarios["vault:reject:location"] = Parameters("brazilsouth");
         scenarios["vault:reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));
-        scenarios["vault:reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));
+        scenarios["vault:reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("vaultabc")), ("nameSuffix", Quote("abcd")));   // kv-vaultabc-dev-scus-01abcd = 27 characters, with the required prefix
         scenarios["vault:reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("adr")));   // would take the ADR server's names
+        scenarios["vault:reject:custom-workload"] = Parameters("southcentralus", ("workloadName", Quote("team")));   // any name without the vault prefix could collide with a custom ADR_WORKLOAD_NAME
 
         return scenarios.ToDictionary(s => s.Key, s => Task.Run(() => RunAsync(s.Key.StartsWith("vault:", StringComparison.Ordinal) ? VaultTemplate : AdrTemplate, s.Value)));
     }

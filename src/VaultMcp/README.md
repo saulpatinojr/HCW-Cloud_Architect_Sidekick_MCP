@@ -136,7 +136,7 @@ Settings (`azd env set NAME VALUE`, all optional):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT` | `vault`, `dev` | the words in every resource name (ADR-0009); the azd environment name must end with `-<VAULT_ENVIRONMENT_SHORT>` |
+| `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT` | `vault`, `dev` | the words in every resource name (ADR-0009); the workload name must start with `vault` (the ADR server's template refuses such names, so the two can never share a resource); the azd environment name must end with `-<VAULT_ENVIRONMENT_SHORT>` |
 | `VAULT_NAME_SUFFIX` | empty | appended to the three globally unique names (registry, Key Vault, storage account) when one is taken, for example a Key Vault still soft-deleted |
 | `VAULT_SHARE_AUTH` | `ManagedIdentity` | `AccountKey` only as the fallback described above |
 | `VAULT_SHARE_QUOTA_GIB` | `5` | size limit of the share |

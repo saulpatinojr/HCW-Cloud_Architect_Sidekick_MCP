@@ -1,8 +1,8 @@
 # gitleaks configuration: the default rules plus one allowlist.
 # Azure built-in role definition ids are public GUIDs (Microsoft Learn, "Azure built-in roles"), not secrets. The generic-api-key
-# rule flags the two Key Vault ones because the variable names next to them say "Secrets". The allowlist matches those two exact
-# values and nothing else, wherever they appear, so a real credential on the same line would still be reported.
-# Reviewed findings from the initial commit stay in .gitleaksignore (exact fingerprints).
+# rule flags the two Key Vault ones because the variable names next to them say "Secrets". The allowlist compares the extracted
+# secret (regexTarget "secret", not the whole match) against the two exact values, anchored, so a real credential next to a role id
+# is still reported. Reviewed findings from the initial commit stay in .gitleaksignore (exact fingerprints).
 title = "ADR MCP server"
 
 [extend]
@@ -10,8 +10,8 @@ useDefault = true
 
 [allowlist]
 description = "Azure built-in role definition ids used in infra/modules/rbac.bicep and infra/vault/modules/vault-rbac.bicep"
-regexTarget = "match"
+regexTarget = "secret"
 regexes = [
-  '''4633458b-17de-408a-b874-0445c86b69e6''',   # Key Vault Secrets User
-  '''b86a8fe4-44ce-4948-aee5-eccb2c155cd7''',   # Key Vault Secrets Officer
+  '''^4633458b-17de-408a-b874-0445c86b69e6$''',   # Key Vault Secrets User
+  '''^b86a8fe4-44ce-4948-aee5-eccb2c155cd7$''',   # Key Vault Secrets Officer
 ]

@@ -66,10 +66,16 @@ public sealed class LocalFolderVaultStore : IVaultStore
         return full.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.Ordinal) ? full : null;
     }
 
+    /// <summary>Largest note that is read. A Markdown note is far below this; anything bigger is skipped unread.</summary>
+    public const long MaxNoteBytes = 2 * 1024 * 1024;
+
     /// <summary>
-    /// True only for an existing regular file whose every path component below the root is a real directory or file,
-    /// not a symbolic link or other reparse point. <see cref="Path.GetFullPath(string)"/> is lexical, so a link inside
-    /// the vault could otherwise point a read at a folder outside it.
+    /// True only for an existing, non-empty regular file of at most <see cref="MaxNoteBytes"/> whose every path
+    /// component below the root is a real directory or file, not a symbolic link or other reparse point.
+    /// <see cref="Path.GetFullPath(string)"/> is lexical, so a link inside the vault could otherwise point a read at
+    /// a folder outside it. The size floor matters on Unix: <see cref="File.Exists(string)"/> is true for a named
+    /// pipe, socket or device as well, and opening a pipe blocks until a writer appears; those report a size of 0,
+    /// so refusing empty entries keeps them from ever being opened. An empty note has nothing to index anyway.
     /// </summary>
     internal bool IsRegularFileWithoutLinks(string full)
     {
@@ -81,6 +87,16 @@ public sealed class LocalFolderVaultStore : IVaultStore
             FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
             if (!info.Exists || info.LinkTarget is not null || (info.Attributes & FileAttributes.ReparsePoint) != 0) return false;
         }
-        return File.Exists(current);
+        if (Directory.Exists(current)) return false;
+        var file = new FileInfo(current);
+        if (!file.Exists) return false;
+        try
+        {
+            return file.Length > 0 && file.Length <= MaxNoteBytes;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 }

@@ -120,7 +120,41 @@ public sealed class AllowListTests : IDisposable
         Assert.Null(await store.ReadAsync("Work", _ct));
         Directory.CreateDirectory(Path.Combine(_vault.Root, "Work", "Folder.md"));
         Assert.Null(await store.ReadAsync("Work/Folder.md", _ct));
+        _vault.Write("Work/Empty.md", "");
+        Assert.Null(await store.ReadAsync("Work/Empty.md", _ct));
+        _vault.Write("Work/Huge.md", new string('x', (int)LocalFolderVaultStore.MaxNoteBytes + 1));
+        Assert.Null(await store.ReadAsync("Work/Huge.md", _ct));
         Assert.NotEmpty((await _vault.Service().SearchAsync("cosmos", 50, _ct)).Hits);
+    }
+
+    [Fact]
+    public async Task A_named_pipe_inside_an_allowed_folder_is_refused_without_blocking()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var fifo = Path.Combine(_vault.Root, "Work", "pipe.md");
+        try
+        {
+            using var mkfifo = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mkfifo", fifo) { RedirectStandardError = true });
+            if (mkfifo is null) return;
+            await mkfifo.WaitForExitAsync(_ct);
+            if (mkfifo.ExitCode != 0) return; // no mkfifo on this machine; covered where it exists
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return;
+        }
+
+        Assert.True(File.Exists(fifo), "the pipe passes File.Exists, which is the point of the test");
+        var store = new LocalFolderVaultStore(_vault.Root);
+        var read = store.ReadAsync("Work/pipe.md", _ct);
+        var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(10), _ct));
+        Assert.Same(read, finished);
+        Assert.Null(await read);
+
+        var search = _vault.Service().SearchAsync("cosmos", 50, _ct);
+        finished = await Task.WhenAny(search, Task.Delay(TimeSpan.FromSeconds(10), _ct));
+        Assert.Same(search, finished);
+        Assert.NotEmpty((await search).Hits);
     }
 
     [Fact]

@@ -9,9 +9,12 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VaultMcp.Core\VaultMcp.Core.csproj" />
+    <ProjectReference Include="..\VaultMcp.Tools\VaultMcp.Tools.csproj" />
     <ProjectReference Include="..\VaultMcp.Stdio\VaultMcp.Stdio.csproj" />
+    <ProjectReference Include="..\VaultMcp.Http\VaultMcp.Http.csproj" />
   </ItemGroup>
 </Project>

@@ -47,3 +47,40 @@ jobs:
 
       - name: Test
         run: dotnet test src/VaultMcp/VaultMcp.sln -c Release --no-build --logger "console;verbosity=normal"
+
+      - name: Smoke test the stdio host over the real protocol
+        run: python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll
+
+      # The container image for the HTTP host (phase 2). Built, started against a throw-away vault and driven over
+      # streamable HTTP; never pushed from here.
+      - name: Build the HTTP host image
+        run: docker build -f src/VaultMcp/Dockerfile -t vault-mcp:ci .
+
+      - name: Smoke test the image over HTTP
+        run: |
+          set -eu
+          vault="$RUNNER_TEMP/vault"
+          mkdir -p "$vault/Work" "$vault/Personal"
+          printf -- '---\nallow: [Work]\n---\n' > "$vault/adr-sidekick.md"
+          printf '# Cosmos decision\n#adr-context\nWe chose Cosmos. See [[Naming]].\n' > "$vault/Work/Cosmos decision.md"
+          printf 'naming rules\n' > "$vault/Work/Naming.md"
+          printf 'private cosmos diary\n' > "$vault/Personal/Diary.md"
+          chmod -R a+rX "$vault"
+          docker run -d --name vault-mcp -p 127.0.0.1:8080:8080 -v "$vault:/vault:ro" -e Vault__Auth__Mode=Anonymous vault-mcp:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/health; echo
+          python3 src/VaultMcp/smoke-test.py --url http://127.0.0.1:8080/mcp --private-note Personal/Diary.md || { docker logs vault-mcp; exit 1; }
+          docker rm -f vault-mcp >/dev/null
+
+      - name: The image refuses Anonymous mode when it looks like Container Apps
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/empty-vault"
+          if docker run --rm -v "$RUNNER_TEMP/empty-vault:/vault:ro" -e Vault__Auth__Mode=Anonymous -e CONTAINER_APP_NAME=ca-vault-ci vault-mcp:ci; then
+            echo "::error::the host started in Anonymous mode inside a Container Apps-like environment"; exit 1
+          else
+            echo "refused as expected"
+          fi

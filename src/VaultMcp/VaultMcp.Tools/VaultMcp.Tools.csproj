@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The four MCP tools, shared by the stdio host (phase 1) and the HTTP host (phase 2, ADR-0010). -->
+  <PropertyGroup>
+    <RootNamespace>VaultMcp.Tools</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VaultMcp.Core\VaultMcp.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -48,9 +48,12 @@
 │   └── package.sh                     # zips the deliverable
 ├── src/VaultMcp/                      # Obsidian vault MCP server (ADR-0010): its own VaultMcp.sln, never referenced by AdrMcp.sln
 │   ├── VaultMcp.Core/                 # allow-list (adr-sidekick.md), note parser, the four read-only operations
+│   ├── VaultMcp.Tools/                # the four MCP tools, shared by both hosts
 │   ├── VaultMcp.Stdio/                # local host for Claude Code and Claude Desktop (stdio)
-│   ├── VaultMcp.Tests/                # xunit, throw-away vault on disk
-│   └── README.md · smoke-test.py      # set-up for each client; protocol-level check of the tool list
+│   ├── VaultMcp.Http/                 # remote host for a container (streamable HTTP; Locked until sign-in exists)
+│   ├── VaultMcp.Tests/                # xunit, throw-away vault on disk, in-process HTTP host
+│   ├── Dockerfile                     # non-root image of the HTTP host (build from the repository root)
+│   └── README.md · smoke-test.py      # set-up for each client; protocol-level check over stdio or HTTP
 ├── tools/AdrMcp.DocGen/               # generates docs/03-mcp-contracts.md from code
 ├── tools/AdrMcp.Import/               # scan and load existing ADR Markdown files (docs/10-legacy-adr-import.md)
 ├── src/

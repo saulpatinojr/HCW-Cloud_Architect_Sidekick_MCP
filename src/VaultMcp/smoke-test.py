@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""End-to-end check of the Obsidian vault MCP server over stdio (ADR-0010 gate 1).
+"""End-to-end check of the Obsidian vault MCP server (ADR-0010 gate 1), over stdio or over HTTP.
 
-Starts the built server against a vault, speaks MCP JSON-RPC to it (initialize, tools/list, tools/call) and checks
-that exactly the four read-only tools are listed and that a search answers. No MCP client library is needed.
+Speaks MCP JSON-RPC to the server (initialize, tools/list, tools/call) and checks that exactly the four read-only
+tools are listed and that a search answers. No MCP client library is needed.
 
-    python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll --vault "<vault>"
+    # phase 1, the stdio host, against the built dll (a throw-away vault is created when --vault is omitted)
+    python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll
 
-Without --vault a throw-away vault with one allow-listed folder and one private folder is created, and the script
-also checks that the private note is refused. Exit code 0 means every line printed OK.
+    # phase 2, the HTTP host (streamable HTTP), against a running server
+    python3 src/VaultMcp/smoke-test.py --url http://127.0.0.1:8080/mcp --private-note Personal/Diary.md
+
+With a throw-away vault the script also checks that the private note is refused. Over HTTP the vault is whatever
+the server was started with; pass --private-note to check one path outside the allow-list is refused.
+Exit code 0 means every line printed OK.
 """
 import argparse
 import json
@@ -16,8 +21,11 @@ import shutil
 import subprocess  # nosec B404: the only process started is the .NET runtime, with arguments from this script's own command line
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 EXPECTED_TOOLS = ["vault_backlinks", "vault_note_get", "vault_search", "vault_tags"]
+PROTOCOL = "2025-06-18"
 
 
 def make_temp_vault() -> str:
@@ -35,56 +43,125 @@ def make_temp_vault() -> str:
     return root
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dll", required=True, help="path to VaultMcp.Stdio.dll (build first)")
-    ap.add_argument("--vault", help="vault folder; omitted = a throw-away vault with a private folder to refuse")
-    ap.add_argument("--query", default="cosmos", help="search word for the vault_search check")
-    args = ap.parse_args()
+class StdioTransport:
+    """Newline-delimited JSON-RPC over the server's stdin and stdout."""
 
-    dotnet = shutil.which("dotnet")
-    if dotnet is None:
-        print("FAIL the .NET runtime ('dotnet') is not on PATH; install the .NET 10 SDK first", file=sys.stderr)
-        return 2
-    if not os.path.isfile(args.dll):
-        print(f"FAIL {args.dll} not found; build first: dotnet build src/VaultMcp/VaultMcp.sln -c Release", file=sys.stderr)
-        return 2
+    def __init__(self, dll: str, vault: str):
+        dotnet = shutil.which("dotnet")
+        if dotnet is None:
+            raise SystemExit("FAIL the .NET runtime ('dotnet') is not on PATH; install the .NET 10 SDK first")
+        if not os.path.isfile(dll):
+            raise SystemExit(f"FAIL {dll} not found; build first: dotnet build src/VaultMcp/VaultMcp.sln -c Release")
+        # No shell is involved; the argument list is fixed apart from the paths given on this script's own command line.
+        self.proc = subprocess.Popen([dotnet, dll, "--vault", vault], stdin=subprocess.PIPE, stdout=subprocess.PIPE,  # nosec B603
+                                     stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        self.next_id = 0
 
-    temp = args.vault is None
-    vault = make_temp_vault() if temp else args.vault
-    # No shell is involved; the argument list is fixed apart from the paths given on this script's own command line.
-    proc = subprocess.Popen([dotnet, args.dll, "--vault", vault], stdin=subprocess.PIPE, stdout=subprocess.PIPE,  # nosec B603
-                            stderr=subprocess.PIPE, text=True, encoding="utf-8")
-    next_id = [0]
+    def _write(self, msg):
+        self.proc.stdin.write(json.dumps(msg) + "\n")
+        self.proc.stdin.flush()
 
-    def send(method, params=None, notify=False):
-        msg = {"jsonrpc": "2.0", "method": method}
+    def request(self, method, params=None):
+        self.next_id += 1
+        msg = {"jsonrpc": "2.0", "id": self.next_id, "method": method}
         if params is not None:
             msg["params"] = params
-        if not notify:
-            next_id[0] += 1
-            msg["id"] = next_id[0]
-        proc.stdin.write(json.dumps(msg) + "\n")
-        proc.stdin.flush()
-
-    def recv():
+        self._write(msg)
         while True:
-            line = proc.stdout.readline()
+            line = self.proc.stdout.readline()
             if not line:
-                sys.stderr.write("server closed its output; its stderr was:\n" + proc.stderr.read())
+                sys.stderr.write("server closed its output; its stderr was:\n" + self.proc.stderr.read())
                 raise SystemExit(1)
             line = line.strip()
             if line:
-                msg = json.loads(line)
-                if "error" in msg:
-                    raise SystemExit(f"FAIL protocol error: {msg['error']}")
-                return msg["result"]
+                reply = json.loads(line)
+                if "error" in reply:
+                    raise SystemExit(f"FAIL protocol error: {reply['error']}")
+                return reply["result"]
 
-    def call(name, arguments):
-        send("tools/call", {"name": name, "arguments": arguments})
-        result = recv()
-        return json.loads(result["content"][0]["text"])
+    def notify(self, method, params=None):
+        msg = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        self._write(msg)
 
+    def close(self) -> int:
+        self.proc.stdin.close()
+        self.proc.wait(timeout=15)
+        return self.proc.returncode
+
+
+class HttpTransport:
+    """MCP streamable HTTP: one POST per message; the answer is JSON or a short SSE stream."""
+
+    def __init__(self, url: str):
+        self.url = url
+        self.session = None
+        self.next_id = 0
+
+    def _post(self, msg):
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                   "MCP-Protocol-Version": PROTOCOL}
+        if self.session:
+            headers["Mcp-Session-Id"] = self.session
+        req = urllib.request.Request(self.url, data=json.dumps(msg).encode("utf-8"), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310: the URL comes from this script's own command line
+                sid = resp.headers.get("Mcp-Session-Id")
+                if sid:
+                    self.session = sid
+                return resp.status, resp.headers.get("Content-Type", ""), resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Content-Type", ""), e.read().decode("utf-8", "replace")
+
+    def request(self, method, params=None):
+        self.next_id += 1
+        msg = {"jsonrpc": "2.0", "id": self.next_id, "method": method}
+        if params is not None:
+            msg["params"] = params
+        status, content_type, body = self._post(msg)
+        if status >= 400:
+            raise SystemExit(f"FAIL HTTP {status} from {method}: {body[:200]}")
+        replies = []
+        if content_type.startswith("text/event-stream"):
+            for line in body.split("\n"):
+                if line.startswith("data:"):
+                    replies.append(json.loads(line[5:].strip()))
+        elif body.strip():
+            replies.append(json.loads(body))
+        for reply in replies:
+            if reply.get("id") == self.next_id:
+                if "error" in reply:
+                    raise SystemExit(f"FAIL protocol error: {reply['error']}")
+                return reply["result"]
+        raise SystemExit(f"FAIL no reply with id {self.next_id} in: {body[:200]}")
+
+    def notify(self, method, params=None):
+        msg = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        status, _, body = self._post(msg)
+        if status >= 400:
+            raise SystemExit(f"FAIL HTTP {status} from {method}: {body[:200]}")
+
+    def close(self) -> int:
+        return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    target = ap.add_mutually_exclusive_group(required=True)
+    target.add_argument("--dll", help="path to VaultMcp.Stdio.dll (build first): the stdio host is started here")
+    target.add_argument("--url", help="MCP endpoint of a running HTTP host, for example http://127.0.0.1:8080/mcp")
+    ap.add_argument("--vault", help="stdio only: vault folder; omitted = a throw-away vault with a private folder to refuse")
+    ap.add_argument("--query", default="cosmos", help="search word for the vault_search check")
+    ap.add_argument("--private-note", help="a note path outside the allow-list that must be refused (automatic for a throw-away vault)")
+    args = ap.parse_args()
+
+    temp = args.dll is not None and args.vault is None
+    vault = make_temp_vault() if temp else args.vault
+    private_note = args.private_note or ("Personal/Diary.md" if temp else None)
+    transport = StdioTransport(args.dll, vault) if args.dll else HttpTransport(args.url)
     failures = 0
 
     def check(ok, label, detail=""):
@@ -93,15 +170,17 @@ def main() -> int:
         if not ok:
             failures += 1
 
-    try:
-        send("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                            "clientInfo": {"name": "vault-smoke", "version": "0"}})
-        info = recv()["serverInfo"]
-        check(True, "initialize", f"{info.get('name')} {info.get('version')}")
-        send("notifications/initialized", notify=True)
+    def call(name, arguments):
+        result = transport.request("tools/call", {"name": name, "arguments": arguments})
+        return json.loads(result["content"][0]["text"])
 
-        send("tools/list", {})
-        tools = recv()["tools"]
+    try:
+        info = transport.request("initialize", {"protocolVersion": PROTOCOL, "capabilities": {},
+                                                "clientInfo": {"name": "vault-smoke", "version": "0"}})["serverInfo"]
+        check(True, "initialize", f"{info.get('name')} {info.get('version')}")
+        transport.notify("notifications/initialized")
+
+        tools = transport.request("tools/list", {})["tools"]
         names = sorted(t["name"] for t in tools)
         check(names == EXPECTED_TOOLS, "tools/list is exactly the four read tools", str(names))
         read_only = all((t.get("annotations") or {}).get("readOnlyHint") is True for t in tools)
@@ -115,20 +194,21 @@ def main() -> int:
             if temp:
                 check([h["path"] for h in search["hits"]] == ["Work/Cosmos decision.md"], "search returns the allow-listed note only")
 
+        if private_note:
+            refused = call("vault_note_get", {"path": private_note})
+            check(refused.get("error", {}).get("code") == "NOT_FOUND", f"{private_note} outside the allow-list is refused with NOT_FOUND")
         if temp:
-            refused = call("vault_note_get", {"path": "Personal/Diary.md"})
-            check(refused.get("error", {}).get("code") == "NOT_FOUND", "a note outside the allow-list is refused with NOT_FOUND")
             back = call("vault_backlinks", {"path": "Naming"})
             check(back.get("total") == 1, "vault_backlinks finds the linking note")
             tags = call("vault_tags", {})
             check(tags.get("total") == 1 and tags.get("subject") == "#adr-context", "vault_tags defaults to the context tag")
     finally:
-        proc.stdin.close()
-        proc.wait(timeout=15)
+        code = transport.close()
         if temp:
             shutil.rmtree(vault, ignore_errors=True)
 
-    check(proc.returncode == 0, "server exited cleanly", f"code {proc.returncode}")
+    if args.dll:
+        check(code == 0, "server exited cleanly", f"code {code}")
     print("\n" + ("ALL OK" if failures == 0 else f"{failures} check(s) failed"))
     return 0 if failures == 0 else 1
 

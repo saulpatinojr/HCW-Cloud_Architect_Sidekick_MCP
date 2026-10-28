@@ -88,6 +88,42 @@ public sealed class AllowListTests : IDisposable
     }
 
     [Fact]
+    public async Task Symbolic_links_inside_an_allowed_folder_are_neither_listed_nor_readable()
+    {
+        var linkedFile = Path.Combine(_vault.Root, "Work", "diary-link.md");
+        var linkedDir = Path.Combine(_vault.Root, "Work", "Personal-link");
+        try
+        {
+            File.CreateSymbolicLink(linkedFile, Path.Combine(_vault.Root, "Personal", "Diary.md"));
+            Directory.CreateSymbolicLink(linkedDir, Path.Combine(_vault.Root, "Personal"));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return; // this machine does not allow creating links; the behaviour is covered where it does
+        }
+
+        var store = new LocalFolderVaultStore(_vault.Root);
+        var listed = await store.ListAsync(_ct);
+        Assert.DoesNotContain(listed, f => f.Path.Contains("link", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(await store.ReadAsync("Work/diary-link.md", _ct));
+        Assert.Null(await store.ReadAsync("Work/Personal-link/Diary.md", _ct));
+
+        var hits = (await _vault.Service().SearchAsync("secret", 50, _ct)).Hits;
+        Assert.Empty(hits);
+    }
+
+    [Fact]
+    public async Task A_note_that_vanishes_or_cannot_be_read_is_skipped_not_fatal()
+    {
+        var store = new LocalFolderVaultStore(_vault.Root);
+        Assert.Null(await store.ReadAsync("Work/Missing.md", _ct));
+        Assert.Null(await store.ReadAsync("Work", _ct));
+        Directory.CreateDirectory(Path.Combine(_vault.Root, "Work", "Folder.md"));
+        Assert.Null(await store.ReadAsync("Work/Folder.md", _ct));
+        Assert.NotEmpty((await _vault.Service().SearchAsync("cosmos", 50, _ct)).Hits);
+    }
+
+    [Fact]
     public async Task Changes_on_disk_show_up_after_the_index_ttl()
     {
         var svc = _vault.Service(TimeSpan.Zero);

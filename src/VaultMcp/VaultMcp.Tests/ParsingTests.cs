@@ -17,6 +17,15 @@ public sealed class ParsingTests
         Assert.Equal("Body line\n", body);
     }
 
+    [Fact]
+    public void Front_matter_block_lists_need_no_indentation_and_stop_at_the_next_key()
+    {
+        var (front, _) = FrontMatter.Split("---\nallow:\n- Work\n- Projects/Cloud\ntag: ctx\ntags:\n  - a\n---\n");
+        Assert.Equal(new[] { "Work", "Projects/Cloud" }, front.List("allow"));
+        Assert.Equal("ctx", front.Scalar("tag"));
+        Assert.Equal(new[] { "a" }, front.List("tags"));
+    }
+
     [Theory]
     [InlineData("No front matter\n---\nnot a block\n")]
     [InlineData("---\nunterminated: true\n")]

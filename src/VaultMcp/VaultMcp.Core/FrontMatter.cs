@@ -51,7 +51,8 @@ public sealed class FrontMatter
             var line = raw.TrimEnd('\r');
             if (line.Trim().Length == 0 || line.TrimStart().StartsWith('#')) continue;
             var trimmed = line.TrimStart();
-            if (openList is not null && trimmed.StartsWith("- ", StringComparison.Ordinal) && line.Length > trimmed.Length)
+            // YAML allows the items of a block list to sit flush with the key, so indentation is not required.
+            if (openList is not null && trimmed.StartsWith("- ", StringComparison.Ordinal))
             {
                 var item = Unquote(trimmed[2..]);
                 if (item.Length > 0) fm._lists[openList].Add(item);

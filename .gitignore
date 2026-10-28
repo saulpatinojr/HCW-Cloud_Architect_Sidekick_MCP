@@ -39,3 +39,7 @@ dist/
 
 # Staged ADR import output (full ADR text; never commit)
 .import/
+
+# Python bytecode (smoke-test.py)
+__pycache__/
+*.pyc

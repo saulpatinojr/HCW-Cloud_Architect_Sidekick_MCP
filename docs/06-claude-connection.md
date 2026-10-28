@@ -6,6 +6,8 @@ The server speaks **Streamable HTTP** at `https://<app>.azurewebsites.net/runtim
 
 **Which way you connect depends on the server's sign-in mode (`Auth__Mode`).** The dev environment (`adr-dev`) is deployed in `EntraBuiltIn` mode (observed in the `ci-cd` run of 2026-10-26), so a client signs in with Microsoft Entra ID. The shared `x-functions-key` header belongs to a server in `FunctionKey` mode: a local run, or a deployment where `ADR_AUTH_MODE` is not set. That each client can sign in to `adr-dev` is **not yet verified**; the open items are listed in [Entra sign-in](11-entra-sign-in.md).
 
+The Obsidian vault server ([ADR-0010](adr/ADR-0010-obsidian-second-brain.md), phase 2) is a second remote server with the same sign-in pattern and its own app registration; its client steps, including the public client registration both servers share, are in the [vault server README](../src/VaultMcp/README.md#connect-the-clients-phase-2-step-4).
+
 ## Claude Code (CLI)
 
 Key-based server (`FunctionKey` mode, the default when `ADR_AUTH_MODE` is not set; the dev environment is not in this mode):

@@ -87,5 +87,5 @@ They run against a throw-away vault on disk and cover: nothing readable without 
 
 ## Not in phase 1
 
-- The phone. The Claude app on a phone reaches only remote servers, and Obsidian Sync cannot be read from Azure; see phase 2 in ADR-0010.
+- The phone. The Claude app on a phone reaches only remote servers, so the server and a synced copy of the allow-listed folders have to be in Azure first; see phase 2 in ADR-0010 (Obsidian's headless Sync client in a container is the recommended route).
 - Uploading notes to the ADR server as evidence (level B in ADR-0010).

@@ -12,7 +12,8 @@ also checks that the private note is refused. Exit code 0 means every line print
 import argparse
 import json
 import os
-import subprocess
+import shutil
+import subprocess  # nosec B404: the only process started is the .NET runtime, with arguments from this script's own command line
 import sys
 import tempfile
 
@@ -41,9 +42,18 @@ def main() -> int:
     ap.add_argument("--query", default="cosmos", help="search word for the vault_search check")
     args = ap.parse_args()
 
+    dotnet = shutil.which("dotnet")
+    if dotnet is None:
+        print("FAIL the .NET runtime ('dotnet') is not on PATH; install the .NET 10 SDK first", file=sys.stderr)
+        return 2
+    if not os.path.isfile(args.dll):
+        print(f"FAIL {args.dll} not found; build first: dotnet build src/VaultMcp/VaultMcp.sln -c Release", file=sys.stderr)
+        return 2
+
     temp = args.vault is None
     vault = make_temp_vault() if temp else args.vault
-    proc = subprocess.Popen(["dotnet", args.dll, "--vault", vault], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    # No shell is involved; the argument list is fixed apart from the paths given on this script's own command line.
+    proc = subprocess.Popen([dotnet, args.dll, "--vault", vault], stdin=subprocess.PIPE, stdout=subprocess.PIPE,  # nosec B603
                             stderr=subprocess.PIPE, text=True, encoding="utf-8")
     next_id = [0]
 
@@ -116,7 +126,6 @@ def main() -> int:
         proc.stdin.close()
         proc.wait(timeout=15)
         if temp:
-            import shutil
             shutil.rmtree(vault, ignore_errors=True)
 
     check(proc.returncode == 0, "server exited cleanly", f"code {proc.returncode}")

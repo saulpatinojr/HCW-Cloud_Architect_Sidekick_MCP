@@ -12,7 +12,7 @@ Record the answers as a comment on issue #27.
 
 - [ ] **A1. Group and role.** Which Entra group gets access, and at which app role (`Adr.Reader`, `Adr.Author`, `Adr.Approver`, `Adr.Admin`)? Recommended: the group as Reader, the owner as Admin; owner-only first is also fine (the runbook supports adding the group later with one assignment).
 - [ ] **A2. Copilot cloud agent.** `docs/11` records "not supported". Confirm, or ask for Option D (an APIM gateway for that one client) from the issue.
-- [ ] **A3. Client apps.** One public client (Claude Code, Claude.ai and Desktop, Codex, Kiro) and one confidential client (Antigravity, Perplexity), as `docs/11` plans, unless one client must be revocable on its own.
+- [ ] **A3. Client apps.** One public client (Claude Code, Codex, Kiro) and one confidential client (Antigravity, Perplexity), as `docs/11` plans, unless one client must be revocable on its own. **Claude.ai and Claude Desktop are not assigned to either group yet.** `docs/06` says confidential today, `docs/11` leaves it to the per-client test, and Anthropic's connector docs say the "Use your own OAuth client" option takes a client ID with the secret left blank unless the authorization server requires one ([Add a connector that isn't in the directory](https://claude.com/docs/connectors/custom/add-unlisted), read 2026-10-28). Register nothing for them before F3. F3 tries the public client first; if Entra or the connector refuses, both go to the confidential client. Whichever way it lands, `docs/06` and `docs/11` are updated to the same answer.
 - [ ] **A4. Pipelines.** Decided 2026-10-28: CI will also call the server. That needs an application app role (every role in `scripts/entra/app-roles.json` allows `User` only), `Auth__Entra__AllowApplicationTokens`, a federated credential for the GitHub workflow (no stored secret) and a role map entry. It is a separate pull request; this checklist covers people only. Still to decide: read-only (recommended) or write, and which workflow calls which tools.
 
 ## Part B. Tenant protection (Entra ID P1 and MFA)
@@ -25,13 +25,13 @@ Do this signed in with a **work account in that tenant** that holds the Global A
 - [ ] **B2. Get P1.** Microsoft 365 admin center → Billing → Purchase services → search "Microsoft Entra ID P1" → Start free trial or Buy. Expect: the Entra admin center Overview page shows *Microsoft Entra ID P1*. Reference: [Sign up for Entra ID P1 or P2](https://learn.microsoft.com/entra/fundamentals/get-started-premium).
 - [ ] **B3. Assign the license** to each person who will sign in (Users → Active users → the user → Licenses and apps). Expect: a tick next to Microsoft Entra ID P1.
 - [ ] **B4. Swap Security Defaults for Conditional Access in one sitting.** Security Defaults (Microsoft's free MFA-for-everyone switch) and Conditional Access cannot both be on.
-  1. Entra admin center → Overview → Properties → Manage security defaults → Disabled (only if it was enabled).
+  1. Entra admin center → Overview → Properties → Manage security defaults. Write down whether it shows Enabled or Disabled (the undo below depends on it), then set it to Disabled if it was enabled.
   2. Entra ID → Conditional Access → Policies → New policy from template. Create **Require multifactor authentication for all users** and set it **On** at once; exclude the two B1 accounts.
   3. From the same templates create **Require phishing-resistant MFA for admins**, **Block legacy authentication** and **Require MFA for Azure management** in **Report-only**. After a few days with nothing unexpected in the sign-in logs, set them On.
   References: [Require MFA for all users](https://learn.microsoft.com/entra/identity/conditional-access/policy-all-users-mfa-strength), [Policy templates](https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common).
 - [ ] **B5. Check.** In a private browser window sign in at `https://myapps.microsoft.com`. Expect an Authenticator prompt.
 
-To undo: set the policies to Off and turn Security Defaults back on; the B1 accounts are the fallback.
+To undo: set the policies to Off. Turn Security Defaults back on only if you recorded it as Enabled in B4 step 1; if it was Disabled before, leave it off. The B1 accounts are the fallback.
 
 ## Part C. Read-only look at the dev environment
 
@@ -59,8 +59,8 @@ If any line differs, stop: do not turn sign-in on for a client. `AADSTS50105` fr
 
 ## Part E. Deployed test (staging or sandbox deployment, not `adr-dev`)
 
-- [ ] **E1.** Deploy with `azd env set ADR_ENTRA_VALIDATE_IN_APP true` ([docs/05](05-local-dev-and-deploy.md)).
-- [ ] **E2.** Repeat runbook step 5 with `$base` set to the deployed host. Expect lines 1–3 → 401 from App Service Authentication, line 4 onward → 200. This is the first proof that the platform passes the `Authorization` header through to the app.
+- [ ] **E1.** Run `azd env set ADR_ENTRA_VALIDATE_IN_APP true`, then `azd provision`, so the Function App actually receives the setting ([docs/05](05-local-dev-and-deploy.md)); `azd env set` alone changes only the local environment file. Expect: provision ends without an error, and the app's Environment variables page shows `Auth__Entra__ValidateBearerToken` = `true`.
+- [ ] **E2.** Repeat runbook step 5 with `$base` set to the deployed host. Expect: lines 1–3 → 401 (now answered by App Service Authentication), line 4 → 200, line 5 → roles `["Admin"]`, line 6 → 200 or 401 (the platform may answer the anonymous metadata call before the app does; record which), line 7 → 404, line 8 → a `WWW-Authenticate: Bearer` challenge that carries both `resource_metadata="https://<app host>/.well-known/oauth-protected-resource/runtime/webhooks/mcp"` and `scope="api://<server client id>/user_impersonation"` (the shape `docs/11` defines; a challenge missing either is a FAIL, because MCP clients discover the sign-in from it), and the smoke test prints `OK initialize` and `OK tools/list`. Line 4 is the first proof that the platform passes the `Authorization` header through to the app.
 - [ ] To undo: `azd env set ADR_ENTRA_VALIDATE_IN_APP false` and provision again.
 
 ## Part F. Each client signs in

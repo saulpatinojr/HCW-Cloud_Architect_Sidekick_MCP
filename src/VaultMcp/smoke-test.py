@@ -12,6 +12,9 @@ tools are listed and that a search answers. No MCP client library is needed.
 
 With a throw-away vault the script also checks that the private note is refused. Over HTTP the vault is whatever
 the server was started with; pass --private-note to check one path outside the allow-list is refused.
+Against a server in Entra mode (phase 2, step 3) put an access token for the vault server in the environment
+variable VAULT_MCP_TOKEN (for example from `az account get-access-token --scope api://<client id>/user_impersonation
+--query accessToken -o tsv`) and add --bearer-from-env; the token is read from the environment, never from the command line.
 Exit code 0 means every line printed OK.
 """
 import argparse
@@ -94,8 +97,9 @@ class StdioTransport:
 class HttpTransport:
     """MCP streamable HTTP: one POST per message; the answer is JSON or a short SSE stream."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, token: str | None = None):
         self.url = url
+        self.token = token
         self.session = None
         self.next_id = 0
 
@@ -104,6 +108,8 @@ class HttpTransport:
                    "MCP-Protocol-Version": PROTOCOL}
         if self.session:
             headers["Mcp-Session-Id"] = self.session
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
         req = urllib.request.Request(self.url, data=json.dumps(msg).encode("utf-8"), headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310: the URL comes from this script's own command line
@@ -156,12 +162,22 @@ def main() -> int:
     ap.add_argument("--vault", help="stdio only: vault folder; omitted = a throw-away vault with a private folder to refuse")
     ap.add_argument("--query", default="cosmos", help="search word for the vault_search check")
     ap.add_argument("--private-note", help="a note path outside the allow-list that must be refused (automatic for a throw-away vault)")
+    ap.add_argument("--bearer-from-env", metavar="NAME", nargs="?", const="VAULT_MCP_TOKEN",
+                    help="HTTP only: send the access token held in this environment variable (default VAULT_MCP_TOKEN) as a Bearer credential")
     args = ap.parse_args()
+
+    token = None
+    if args.bearer_from_env:
+        if not args.url:
+            ap.error("--bearer-from-env applies to --url only")
+        token = os.environ.get(args.bearer_from_env, "").strip()
+        if not token:
+            ap.error(f"environment variable {args.bearer_from_env} is empty; put the access token there first")
 
     temp = args.dll is not None and args.vault is None
     vault = make_temp_vault() if temp else args.vault
     private_note = args.private_note or ("Personal/Diary.md" if temp else None)
-    transport = StdioTransport(args.dll, vault) if args.dll else HttpTransport(args.url)
+    transport = StdioTransport(args.dll, vault) if args.dll else HttpTransport(args.url, token)
     failures = 0
 
     def check(ok, label, detail=""):

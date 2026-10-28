@@ -1,0 +1,10 @@
+[
+  {
+    "allowedMemberTypes": [ "User" ],
+    "description": "Read the allow-listed folders of the Obsidian vault through the vault MCP server. The only role; there is no write tool.",
+    "displayName": "Vault Reader",
+    "id": "7c1f3a52-9b6e-4d0a-8e2f-5a4b3c2d1e0f",
+    "isEnabled": true,
+    "value": "Vault.Reader"
+  }
+]

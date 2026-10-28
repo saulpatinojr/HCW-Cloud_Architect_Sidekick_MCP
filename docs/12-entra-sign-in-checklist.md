@@ -79,3 +79,10 @@ Register what the table in [docs/11 "Clients and what each needs registered"](11
 - [ ] **G1.** Results to the maintainer (step, line, status code only). The maintainer updates docs/06, docs/11, the changelog and the issue.
 - [ ] **G2.** The owner moves [ADR-0008](adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) from Proposed to Accepted. No agent does this.
 - [ ] **G3.** Only after Part F passes: `ADR_ENTRA_VALIDATE_IN_APP=true` for `adr-dev`, then the pipeline pull request from A4.
+
+## Part H. The vault server (ADR-0010, phase 2 step 3)
+
+The Obsidian vault server in Azure uses the same pattern with its **own** app registration and one role, `Vault.Reader`. It reuses the client registrations from Part F (only its scope is new to them), so do it after Part F.
+
+- [ ] **H1.** Create the vault server's app registration, assign yourself `Vault.Reader`, pre-authorize the clients, turn `VAULT_AUTH_MODE=Entra` on and run the two checks: steps 1 to 6 of [Sign in with Entra](../src/VaultMcp/README.md#sign-in-with-entra-phase-2-step-3) in the vault server README. Report step numbers and status codes only.
+- [ ] **H2.** Connect Claude Code, Claude Desktop, Claude.ai and the phone to the vault address (step 4 of phase 2; the maintainer writes the steps once F3 has settled the client registration).

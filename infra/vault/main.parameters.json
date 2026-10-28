@@ -17,6 +17,10 @@
     "syncIntervalSeconds": { "value": "${VAULT_SYNC_INTERVAL_SECONDS=60}" },
     "syncVaultEncrypted": { "value": "${VAULT_SYNC_VAULT_ENCRYPTED=true}" },
     "syncLoginFromKeyVault": { "value": "${VAULT_SYNC_LOGIN_FROM_KEY_VAULT=false}" },
-    "deployerPrincipalId": { "value": "${VAULT_DEPLOYER_PRINCIPAL_ID}" }
+    "deployerPrincipalId": { "value": "${VAULT_DEPLOYER_PRINCIPAL_ID}" },
+    "authMode": { "value": "${VAULT_AUTH_MODE=Locked}" },
+    "entraClientId": { "value": "${VAULT_ENTRA_CLIENT_ID}" },
+    "entraAllowedClientIds": { "value": "${VAULT_ENTRA_ALLOWED_CLIENT_IDS}" },
+    "entraRequiredRole": { "value": "${VAULT_ENTRA_REQUIRED_ROLE=Vault.Reader}" }
   }
 }

@@ -33,6 +33,10 @@ builder.Services.AddSingleton<VaultService>();
 builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithToolsFromAssembly(typeof(VaultTools).Assembly);
+if (options.Entra is { } entra)
+{
+    builder.Services.AddVaultEntraSignIn(entra);
+}
 
 var app = builder.Build();
 
@@ -61,7 +65,18 @@ app.Use(async (context, next) =>
     await next(context);
 });
 
-app.MapMcp("/mcp");
+if (options.Entra is { } signIn)
+{
+    // Entra mode: every MCP request (POST, the GET event stream, DELETE) carries a verified token with the vault role; nothing else needs one.
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapProtectedResourceMetadata(signIn);
+    app.MapMcp(VaultEntraOptions.McpPath).RequireAuthorization(EntraSignIn.Policy);
+}
+else
+{
+    app.MapMcp(VaultEntraOptions.McpPath);
+}
 
 app.Run();
 return 0;

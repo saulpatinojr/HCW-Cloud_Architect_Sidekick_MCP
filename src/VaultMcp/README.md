@@ -83,7 +83,7 @@ To remove: `claude mcp remove vault`, or delete the JSON block.
 | Setting | Default | Meaning |
 |---|---|---|
 | `Vault__Path` (or `VAULT_PATH`) | none, required | the folder that holds the vault copy (`/vault` in the image) |
-| `Vault__Auth__Mode` | `Locked` | `Locked`: every call to `/mcp` is refused with 401 until a sign-in layer is configured (step 3 of phase 2). `Anonymous`: no sign-in, for a machine you control only; the host refuses to start in this mode when `CONTAINER_APP_NAME` is set, which Azure Container Apps always sets |
+| `Vault__Auth__Mode` | `Locked` | `Locked`: every call to `/mcp` is refused with 401. `Anonymous`: no sign-in, for a machine you control only; the host refuses to start in this mode when `CONTAINER_APP_NAME` is set, which Azure Container Apps always sets. `Entra`: Microsoft Entra ID sign-in, the mode for Azure ([step 3 below](#sign-in-with-entra-phase-2-step-3)); needs the settings in that section |
 
 It fails closed on purpose: a deployment with no sign-in yet serves nothing but `/health`.
 
@@ -113,7 +113,7 @@ The vault server has its own azd project (`src/VaultMcp/azure.yaml`) and its own
 | Resource | Name (defaults, South Central US) | Job |
 |---|---|---|
 | Resource group | `rg-vault-dev-scus-01` | holds everything below |
-| Container app | `ca-vault-dev-scus-01` | the HTTP host: one replica, HTTPS on the internet, **Locked** (401 on `/mcp`) until step 3 |
+| Container app | `ca-vault-dev-scus-01` | the HTTP host: one replica, HTTPS on the internet, **Locked** (401 on `/mcp`) until you turn the sign-in on in step 3 |
 | Container Apps environment | `cae-vault-dev-scus-01` | runs it; mounts the share read-only with its managed identity |
 | Container registry | `crvaultdevscus01` | holds the image; `azd deploy` builds it there, so you need no Docker |
 | Storage account, file shares | `stvaultdevscus01`, shares `vault` and `syncstate` | the synced copy of the allow-listed folders (written by step 2), and the Sync client's own state |
@@ -164,7 +164,7 @@ The HTTP host reads a copy of your allow-listed folders from the file share. Ste
 4. Run `azd provision`. Expect the new app `ca-vault-sync-dev-scus-01` in the outputs (`AZURE_SYNC_CONTAINER_APP_NAME`). It runs a placeholder image until the next step. If it fails with a Key Vault error, the secret of step 1 is missing or you lack the role on the vault.
 5. Run `azd deploy sync`. Expect the image to build in the registry and `Deploying service sync`.
 6. If you chose the sign-in by hand: run `az containerapp exec --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --command "ob login"` and answer the prompts (email, password, two-factor code). Expect your account shown; press Ctrl+D. The login is stored on the state share, so a restart does not ask again.
-7. Check: `az containerapp logs show --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --tail 50` shows `vault set up for pull-only sync`, `exclusions applied (<n>): ...` and `synced; exclusions from adr-sidekick.md` within a couple of minutes. Then `curl "$(azd env get-value VAULT_HEALTH_URL)"` answers `"settingsNote":true`: the server sees the note. The tools stay locked until step 3 (sign-in).
+7. Check: `az containerapp logs show --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --tail 50` shows `vault set up for pull-only sync`, `exclusions applied (<n>): ...` and `synced; exclusions from adr-sidekick.md` within a couple of minutes. Then `curl "$(azd env get-value VAULT_HEALTH_URL)"` answers `"settingsNote":true`: the server sees the note. The tools stay locked until step 3 (sign-in) is turned on.
 
 Step 2 settings (`azd env set NAME VALUE`):
 
@@ -181,6 +181,81 @@ To undo: `azd env set VAULT_SYNC_ENABLED false` and `azd provision` removes the 
 
 **Not verified yet** (needs a subscription and the beta): where `ob` stores its login on Linux (the state share is mounted as its home directory, which covers the usual places), whether `--excluded-folders` accepts nested paths such as `Projects/Home` (ADR-0010 names this as the fallback point: if not, keep allow-listed folders at the top level), and that a note edited on the phone reaches the share.
 
+## Sign in with Entra (phase 2, step 3)
+
+Entra sign-in is what lets a phone, Claude.ai or a laptop call the server in Azure as **you**, and nobody else. It is the [ADR-0008](../../docs/adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) pattern applied to a second server with its own identity ([ADR-0010](../../docs/adr/ADR-0010-obsidian-second-brain.md), design item 3): the vault server gets its **own app registration** in Microsoft Entra ID (the tenant's sign-in service), one app role `Vault.Reader`, and its own `user_impersonation` scope. An MCP client signs the user in with Entra, gets an access token for the vault server, and sends it as a `Bearer` credential. The host checks the token itself on every call (there is no platform layer in front of it): the signature against the tenant's published keys (RS256 only), the exact v2.0 issuer, the audience (the vault server's client ID), the lifetime, token version 2.0, the tenant, an allowed client application (`azp`), the scope, and the role. A token for the ADR server is refused here (wrong audience), and the other way round. The settings are checked at start; a bad one stops the host instead of weakening a check.
+
+What a client sees (the MCP authorization spec, revision 2026-07-28; the same table as the ADR server's):
+
+| Call | Answer |
+|---|---|
+| no token | `401`, `WWW-Authenticate: Bearer resource_metadata="https://<app>/.well-known/oauth-protected-resource/mcp", scope="api://<client id>/user_impersonation"`: the client reads the metadata, finds Entra and the scope, and signs the user in |
+| a token that is not valid for this server (signature, issuer, audience, expiry, tenant, client, version, shape) | `401`, `error="invalid_token"`; the reason is in the log only, as a fixed word |
+| a token without the scope, or an application token (no user) | `403`, `error="insufficient_scope"` |
+| a valid token whose user has no `Vault.Reader` assignment | `403` with no challenge: an assignment in Entra fixes it, signing in again does not |
+| the tenant's keys cannot be fetched | `503` with `Retry-After: 30`; never acceptance |
+| `GET /.well-known/oauth-protected-resource` (and `.../mcp`) | `200`, the metadata (RFC 9728): `resource`, `authorization_servers`, `scopes_supported`; anonymous and cacheable |
+| `GET /health` | `200` without a token, as before |
+
+**You need:** step 1b provisioned; the Azure CLI signed in to the tenant the users live in; permission to create app registrations and assign app roles (Application Administrator or Cloud Application Administrator; an administrator can do step 2 for you); the client IDs of the MCP clients you will use (the table in [docs/11](../../docs/11-entra-sign-in.md#clients-and-what-each-needs-registered); the owner checklist [docs/12](../../docs/12-entra-sign-in-checklist.md) decides them). Recommended first: Entra ID P1 and MFA from Part B of that checklist. Run the blocks from the repository root. Never paste a tenant ID, an application ID or a token into chat, an issue or a commit; report step numbers and status codes only.
+
+1. Create the app registration: single tenant, v2 tokens, the role from `scripts/entra/vault-app-roles.json`, the scope from `scripts/entra/vault-oauth2-permission-scopes.json`, the Application ID URI `api://<client id>`, and a service principal that requires assignment (so only people with the role can sign in at all):
+   ```bash
+   app=$(az ad app create --display-name 'Obsidian vault MCP server' --sign-in-audience AzureADMyOrg --requested-access-token-version 2 --app-roles @scripts/entra/vault-app-roles.json --query appId -o tsv)
+   obj=$(az ad app show --id "$app" --query id -o tsv)
+   az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$obj" --headers 'Content-Type=application/json' --body @scripts/entra/vault-oauth2-permission-scopes.json
+   az ad app update --id "$app" --identifier-uris "api://$app"
+   sp=$(az ad sp create --id "$app" --query id -o tsv)
+   az ad sp update --id "$sp" --set appRoleAssignmentRequired=true
+   az ad app show --id "$app" --query '[appRoles[].value, api.oauth2PermissionScopes[].value, api.requestedAccessTokenVersion]' -o tsv
+   ```
+   Expect the last command to print `Vault.Reader`, `user_impersonation` and `2`. Keep this terminal open: the next steps use `$app` and `$sp`.
+2. Assign yourself `Vault.Reader` (the only role; add other people the same way, one assignment each, or a group once the checklist's Part A settles it):
+   ```bash
+   me=$(az ad signed-in-user show --query id -o tsv)
+   role=$(python3 -c "import json; print(next(r['id'] for r in json.load(open('scripts/entra/vault-app-roles.json')) if r['value'] == 'Vault.Reader'))")
+   az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" --headers 'Content-Type=application/json' --body "{\"principalId\":\"$me\",\"resourceId\":\"$sp\",\"appRoleId\":\"$role\"}"
+   ```
+   Expect JSON for the new assignment, with `principalDisplayName` showing your name.
+3. Allow the clients. Each MCP client application must be pre-authorized on the vault scope (or Entra asks the user for consent at the first sign-in), and its client ID goes in the allow-list of step 4. For the check in step 6 from your own terminal, pre-authorize Microsoft's public Azure CLI client with `scripts/entra/vault-preauthorize-azure-cli.json`; do this in a sandbox or for an owner-only vault, and remove it afterwards (it lets anyone in the tenant with the Azure CLI *ask* for a token, though only people with the role get one):
+   ```bash
+   az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$obj" --headers 'Content-Type=application/json' --body @scripts/entra/vault-preauthorize-azure-cli.json
+   ```
+   For your real clients (the public client of Claude Code and Claude Desktop, and whatever Part F of the checklist settles for Claude.ai and the phone), copy that file, put each client's `appId` in it, and run the same command once per client. No new client app is needed: the client registrations of ADR-0008 are reused; only this server's scope is new to them.
+4. Turn the sign-in on, in `src/VaultMcp` (the client list is comma-separated; include the Azure CLI's `04b07795-8ddb-461a-bbee-02f9e1bf7b46` while step 6 needs it):
+   ```bash
+   azd env set VAULT_AUTH_MODE Entra
+   azd env set VAULT_ENTRA_CLIENT_ID "$app"
+   azd env set VAULT_ENTRA_ALLOWED_CLIENT_IDS "<client ids, comma-separated>"
+   azd provision
+   ```
+   Expect the outputs to show `VAULT_AUTH_MODE = Entra` and `VAULT_RESOURCE_METADATA_URL`. The tenant is the one you deploy into (override with the Bicep parameter `entraTenantId` only for a different tenant). If the new revision does not become healthy, the host refused a setting at start: `az containerapp logs show --name "$(azd env get-value AZURE_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --type console --tail 20` prints the line that names it (`Vault:Auth:Entra:... must ...`).
+5. Check without a token: `curl -si -X POST -H 'Content-Type: application/json' -d '{}' "$(azd env get-value VAULT_MCP_ENDPOINT)" | head -5` answers `401` with a `WWW-Authenticate: Bearer resource_metadata="..." scope="api://..."` line and no `error=`; `curl -s "$(azd env get-value VAULT_RESOURCE_METADATA_URL)"` prints the metadata JSON; `curl -s "$(azd env get-value VAULT_HEALTH_URL)"` shows `"mode":"Entra"`.
+6. Check with a token, from the repository root. Sign in once for the scope (your browser opens; this is the consent Entra asks for), put the token in an environment variable (never on the command line), run the smoke test, then forget the token:
+   ```bash
+   az login --scope "api://$app/user_impersonation"
+   export VAULT_MCP_TOKEN=$(az account get-access-token --scope "api://$app/user_impersonation" --query accessToken -o tsv)
+   python3 src/VaultMcp/smoke-test.py --url "$(cd src/VaultMcp && azd env get-value VAULT_MCP_ENDPOINT)" --bearer-from-env --private-note "<a note path outside your allow-list>"
+   unset VAULT_MCP_TOKEN
+   ```
+   Expect `OK initialize`, `OK tools/list` and `ALL OK`. A `403` with `insufficient_scope` means the token was not for this scope (sign in again with the `--scope` line); a `403` with no `WWW-Authenticate` means your user has no `Vault.Reader` assignment (step 2); a `401` with `invalid_token` means the token is for another tenant, client or server (steps 1 and 4).
+7. Clients: connecting Claude Code, Claude Desktop, Claude.ai and the phone to `VAULT_MCP_ENDPOINT` is the next step of phase 2 and follows [docs/06](../../docs/06-claude-connection.md) once Part F of the checklist has settled which client registration each one uses. Nothing in this step connects a client.
+
+Step 3 settings (`azd env set NAME VALUE`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VAULT_AUTH_MODE` | `Locked` | `Entra` turns the sign-in on; the template then passes the settings below to the container app, with the tenant you deploy into and the app's own address as the resource URI |
+| `VAULT_ENTRA_CLIENT_ID` | empty | client (application) ID of the vault server's app registration (step 1); required in Entra mode |
+| `VAULT_ENTRA_ALLOWED_CLIENT_IDS` | empty | comma-separated client IDs of the MCP clients allowed to call (step 3); required in Entra mode, because an empty list would accept every client |
+| `VAULT_ENTRA_REQUIRED_ROLE` | `Vault.Reader` | the app role a user must hold; change it only together with `scripts/entra/vault-app-roles.json` |
+
+Outside Azure the same settings are environment variables: `Vault__Auth__Mode=Entra`, `Vault__Auth__Entra__TenantId`, `Vault__Auth__Entra__ClientId`, `Vault__Auth__Entra__AllowedClientIds`, `Vault__Auth__Entra__RequiredRole` and `Vault__Auth__Entra__ResourceUri` (the `https://<host>/mcp` address the challenges name; `http://localhost...` is accepted for a local run only). Optional: `Vault__Auth__Entra__Scope` (default `user_impersonation`) and `Vault__Auth__Entra__AuthorityHost` (default `login.microsoftonline.com`).
+
+To undo: `azd env set VAULT_AUTH_MODE Locked` and `azd provision` puts the server back to 401 for everyone; `az ad app delete --id "$app"` removes the app registration, its service principal and every assignment.
+
+**Not verified yet** (needs a tenant): the whole flow against real Entra tokens (the unit tests prove every row of the table with a key set made in the test), that Claude's connector and the phone accept this host's challenge and metadata (checklist F3), and the `CONTAINER_APP_HOSTNAME` fallback for the resource URI (the template passes the address explicitly, so nothing relies on it).
+
 ## Tests
 
 ```bash
@@ -191,10 +266,10 @@ python3 src/VaultMcp/smoke-test.py --url http://127.0.0.1:8080/mcp --private-not
 
 The smoke test speaks the MCP protocol the way a client does and prints one `OK` line per check, ending in `ALL OK`. With `--dll` it starts the stdio host itself (a throw-away vault is created unless you add `--vault "<vault>"`); with `--url` it talks to a running HTTP host, and `--private-note` names one path outside your allow-list that must be refused.
 
-The unit tests run against a throw-away vault on disk and cover: nothing readable without the settings note; allow-listed folders only; path climbing and absolute paths refused; symbolic links refused; named pipes never opened; hidden folders ignored; tags and links inside code ignored; truncation; backlinks by name, alias and path; the tool list is exactly the four read tools with `readOnly` set; and the HTTP host locked by default, serving the tools in Anonymous mode, and refusing Anonymous under Container Apps.
+The unit tests run against a throw-away vault on disk and cover: nothing readable without the settings note; allow-listed folders only; path climbing and absolute paths refused; symbolic links refused; named pipes never opened; hidden folders ignored; tags and links inside code ignored; truncation; backlinks by name, alias and path; the tool list is exactly the four read tools with `readOnly` set; and the HTTP host locked by default, serving the tools in Anonymous mode, and refusing Anonymous under Container Apps. The Entra tests host the real pipeline with the tenant's key set replaced by a key made in the test and prove every row of the step 3 table: a token with the role opens the tools; no token, thirteen kinds of invalid token, a token without the scope, a token without the role, and unreachable keys each get their answer; the metadata document; and every setting rule, with no value echoed in a message.
 
 ## Not yet
 
-- Sign-in for the HTTP host: it stays `Locked` until step 3 of phase 2 adds the Entra layer ([ADR-0008](../../docs/adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) pattern, the vault's own app registration).
+- A run of the step 3 sign-in against a real tenant, and the clients (Claude Code, Claude Desktop, Claude.ai, the phone) connected to the Azure address (step 4 of phase 2, after checklist Part F).
 - A proven run of the step 2 sync container against a real Obsidian account (the beta client cannot run in CI).
 - Uploading notes to the ADR server as evidence (level B in ADR-0010).

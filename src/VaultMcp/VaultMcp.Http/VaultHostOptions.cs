@@ -28,12 +28,16 @@ public sealed record VaultHostOptions(string Path, VaultAccessMode Mode)
             throw new InvalidOperationException($"Set {PathKey} (or VAULT_PATH) to the folder that holds the vault copy.");
         }
 
-        var modeText = configuration[ModeKey];
-        var mode = VaultAccessMode.Locked;
-        if (!string.IsNullOrWhiteSpace(modeText) && !Enum.TryParse(modeText, ignoreCase: true, out mode))
+        // Names only. Enum.TryParse would also accept a number such as "2", which is no declared mode and would slip
+        // past the Locked check in Program.cs; a value that is not one of the two names stops the host instead.
+        var modeText = configuration[ModeKey]?.Trim();
+        var mode = modeText switch
         {
-            throw new InvalidOperationException($"{ModeKey} must be Locked or Anonymous; '{modeText}' is neither.");
-        }
+            null or "" => VaultAccessMode.Locked,
+            _ when modeText.Equals(nameof(VaultAccessMode.Locked), StringComparison.OrdinalIgnoreCase) => VaultAccessMode.Locked,
+            _ when modeText.Equals(nameof(VaultAccessMode.Anonymous), StringComparison.OrdinalIgnoreCase) => VaultAccessMode.Anonymous,
+            _ => throw new InvalidOperationException($"{ModeKey} must be Locked or Anonymous; '{modeText}' is neither."),
+        };
 
         if (mode == VaultAccessMode.Anonymous && !string.IsNullOrEmpty(environment(ContainerAppsMarker)))
         {

@@ -27,5 +27,6 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0
 VOLUME ["/vault"]
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["dotnet", "--version"]
+# No Docker HEALTHCHECK on purpose: the runtime image has neither an SDK nor curl, and Azure Container Apps ignores
+# the instruction. Liveness and readiness probes against GET /health are declared in the Container Apps Bicep.
 ENTRYPOINT ["dotnet", "VaultMcp.Http.dll"]

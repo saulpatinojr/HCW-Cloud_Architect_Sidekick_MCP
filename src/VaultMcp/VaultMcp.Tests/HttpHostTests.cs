@@ -78,8 +78,14 @@ public sealed class HttpHostTests : IDisposable
         Assert.Contains("Container Apps", inAzure.Message);
         Assert.Equal(VaultAccessMode.Anonymous, VaultHostOptions.From(config, _ => null).Mode);
 
-        var bad = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { [VaultHostOptions.PathKey] = _vault.Root, [VaultHostOptions.ModeKey] = "Open" }).Build();
-        Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(bad, _ => null));
+        // Names only: a number would parse as an enum value, and an undefined one would skip the Locked check.
+        foreach (var value in new[] { "Open", "2", "0", "1", "Locked,Anonymous" })
+        {
+            var bad = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { [VaultHostOptions.PathKey] = _vault.Root, [VaultHostOptions.ModeKey] = value }).Build();
+            Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(bad, _ => null));
+        }
+        var spaced = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { [VaultHostOptions.PathKey] = _vault.Root, [VaultHostOptions.ModeKey] = " locked " }).Build();
+        Assert.Equal(VaultAccessMode.Locked, VaultHostOptions.From(spaced, _ => null).Mode);
 
         var noPath = new ConfigurationBuilder().Build();
         Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(noPath, _ => null));

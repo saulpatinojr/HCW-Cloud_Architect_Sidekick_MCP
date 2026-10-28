@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using VaultMcp.Core;
-using VaultMcp.Stdio;
+using VaultMcp.Tools;
 using Xunit;
 
 namespace VaultMcp.Tests;

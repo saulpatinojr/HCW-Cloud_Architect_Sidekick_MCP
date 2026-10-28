@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VaultMcp.Core;
+using VaultMcp.Tools;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -23,7 +24,7 @@ builder.Services.AddSingleton(sp => new VaultIndex(sp.GetRequiredService<IVaultS
 builder.Services.AddSingleton<VaultService>();
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithToolsFromAssembly(typeof(VaultTools).Assembly);
 
 await builder.Build().RunAsync();
 return 0;

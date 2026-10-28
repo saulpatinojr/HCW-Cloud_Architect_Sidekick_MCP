@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 using VaultMcp.Core;
 
-namespace VaultMcp.Stdio;
+namespace VaultMcp.Tools;
 
 /// <summary>The four tools. All read-only; there is no write tool by the owner's decision (ADR-0010). Each answers compact JSON.</summary>
 [McpServerToolType]

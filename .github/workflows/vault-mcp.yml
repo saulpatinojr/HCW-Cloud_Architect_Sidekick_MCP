@@ -1,12 +1,17 @@
 name: vault-mcp
 
 # The Obsidian vault MCP server (src/VaultMcp, ADR-0010) has its own solution that AdrMcp.sln never references,
-# so it gets its own small check. It never deploys anything.
+# so it gets its own small check. It never deploys anything; the owner provisions the vault server with azd from src/VaultMcp (README).
 on:
   push:
     branches: [ main ]
     paths:
       - 'src/VaultMcp/**'
+      - 'infra/vault/**'
+      - 'infra/modules/identity.bicep'
+      - 'infra/modules/keyvault.bicep'
+      - 'infra/abbreviations.json'
+      - 'infra/region-codes.json'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'global.json'
@@ -15,6 +20,11 @@ on:
     # Any base branch: a stacked pull request (one that targets another feature branch) still gets this check.
     paths:
       - 'src/VaultMcp/**'
+      - 'infra/vault/**'
+      - 'infra/modules/identity.bicep'
+      - 'infra/modules/keyvault.bicep'
+      - 'infra/abbreviations.json'
+      - 'infra/region-codes.json'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'global.json'
@@ -47,3 +57,91 @@ jobs:
 
       - name: Test
         run: dotnet test src/VaultMcp/VaultMcp.sln -c Release --no-build --logger "console;verbosity=normal"
+
+      # The headless Sync sidecar (ADR-0010 phase 2, step 2): its exclusion logic has unit tests, and its image must build and
+      # fail closed when it is started without settings. The real `ob` client needs an Obsidian account, so it is not exercised here.
+      - uses: actions/setup-node@v5
+        with: { node-version: '22' }
+      - name: Test the sync sidecar's allow-list logic
+        run: node --test 'src/VaultMcp/sync/*.test.mjs'
+      - name: Build the sync sidecar image and check it refuses to start unconfigured
+        run: |
+          set -eu
+          docker build -t vault-sync:ci src/VaultMcp/sync
+          docker run --rm --entrypoint sh vault-sync:ci -c 'command -v ob && node --version'
+          if docker run --rm vault-sync:ci --check; then
+            echo "::error::the sync sidecar accepted an empty configuration"; exit 1
+          else
+            echo "refused as expected"
+          fi
+
+      - name: Smoke test the stdio host over the real protocol
+        run: python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll
+
+      # The Azure template of the HTTP host (ADR-0010 phase 2, step 1b). Built and linted only; the naming tests in ci-cd evaluate it too.
+      - name: Bicep build + lint (infra/vault/main.bicep)
+        run: |
+          az bicep install
+          az bicep build --file infra/vault/main.bicep --stdout > /dev/null
+          az bicep lint --file infra/vault/main.bicep
+
+      # The container image for the HTTP host (phase 2). Built, started against a throw-away vault and driven over
+      # streamable HTTP; never pushed from here.
+      - name: Build the HTTP host image
+        run: docker build -f src/VaultMcp/Dockerfile -t vault-mcp:ci .
+
+      - name: Smoke test the image over HTTP
+        run: |
+          set -eu
+          vault="$RUNNER_TEMP/vault"
+          mkdir -p "$vault/Work" "$vault/Personal"
+          printf -- '---\nallow: [Work]\n---\n' > "$vault/adr-sidekick.md"
+          printf '# Cosmos decision\n#adr-context\nWe chose Cosmos. See [[Naming]].\n' > "$vault/Work/Cosmos decision.md"
+          printf 'naming rules\n' > "$vault/Work/Naming.md"
+          printf 'private cosmos diary\n' > "$vault/Personal/Diary.md"
+          chmod -R a+rX "$vault"
+          docker run -d --name vault-mcp -p 127.0.0.1:8080:8080 -v "$vault:/vault:ro" -e Vault__Auth__Mode=Anonymous vault-mcp:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/health; echo
+          python3 src/VaultMcp/smoke-test.py --url http://127.0.0.1:8080/mcp --private-note Personal/Diary.md || { docker logs vault-mcp; exit 1; }
+          docker rm -f vault-mcp >/dev/null
+
+      - name: The image refuses Anonymous mode when it looks like Container Apps
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/empty-vault"
+          if docker run --rm -v "$RUNNER_TEMP/empty-vault:/vault:ro" -e Vault__Auth__Mode=Anonymous -e CONTAINER_APP_NAME=ca-vault-ci vault-mcp:ci; then
+            echo "::error::the host started in Anonymous mode inside a Container Apps-like environment"; exit 1
+          else
+            echo "refused as expected"
+          fi
+
+      # Step 3 (Entra mode) with made-up ids: no token means a challenge and the metadata, which need no tenant at all.
+      - name: The image in Entra mode answers the challenge and the resource metadata, and refuses a half configuration
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/empty-vault"
+          docker run -d --name vault-entra -p 127.0.0.1:8081:8080 -v "$RUNNER_TEMP/empty-vault:/vault:ro" \
+            -e Vault__Auth__Mode=Entra -e CONTAINER_APP_NAME=ca-vault-ci \
+            -e Vault__Auth__Entra__TenantId=11111111-2222-3333-4444-555555555555 \
+            -e Vault__Auth__Entra__ClientId=66666666-7777-8888-9999-aaaaaaaaaaaa \
+            -e Vault__Auth__Entra__AllowedClientIds=bbbbbbbb-cccc-dddd-eeee-ffffffffffff \
+            -e Vault__Auth__Entra__ResourceUri=https://ca-vault-ci.example.test/mcp vault-mcp:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8081/health | grep -q '"mode":"Entra"' || { docker logs vault-entra; exit 1; }
+          code=$(curl -s -o /dev/null -D "$RUNNER_TEMP/challenge.txt" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8081/mcp)
+          [ "$code" = "401" ] || { echo "::error::expected 401 without a token, got $code"; docker logs vault-entra; exit 1; }
+          grep -i 'www-authenticate: bearer resource_metadata="https://ca-vault-ci.example.test/.well-known/oauth-protected-resource/mcp", scope="api://66666666-7777-8888-9999-aaaaaaaaaaaa/user_impersonation"' "$RUNNER_TEMP/challenge.txt"
+          curl -fsS http://127.0.0.1:8081/.well-known/oauth-protected-resource/mcp | grep -q '"authorization_servers":\["https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0"\]'
+          docker rm -f vault-entra >/dev/null
+          if docker run --rm -v "$RUNNER_TEMP/empty-vault:/vault:ro" -e Vault__Auth__Mode=Entra -e Vault__Auth__Entra__TenantId=11111111-2222-3333-4444-555555555555 vault-mcp:ci; then
+            echo "::error::the host started in Entra mode without a client id or an allow-list"; exit 1
+          else
+            echo "refused as expected"
+          fi

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "${AZURE_ENV_NAME}" },
+    "location": { "value": "${AZURE_LOCATION}" },
+    "workloadName": { "value": "${VAULT_WORKLOAD_NAME=vault}" },
+    "environmentShort": { "value": "${VAULT_ENVIRONMENT_SHORT=dev}" },
+    "nameSuffix": { "value": "${VAULT_NAME_SUFFIX}" },
+    "vaultExists": { "value": "${SERVICE_VAULT_RESOURCE_EXISTS=false}" },
+    "shareAuth": { "value": "${VAULT_SHARE_AUTH=ManagedIdentity}" },
+    "shareQuotaGiB": { "value": "${VAULT_SHARE_QUOTA_GIB=5}" },
+    "syncEnabled": { "value": "${VAULT_SYNC_ENABLED=false}" },
+    "syncExists": { "value": "${SERVICE_SYNC_RESOURCE_EXISTS=false}" },
+    "syncRemoteVault": { "value": "${VAULT_SYNC_REMOTE_VAULT}" },
+    "syncExcludeSeed": { "value": "${VAULT_SYNC_EXCLUDE_SEED}" },
+    "syncIntervalSeconds": { "value": "${VAULT_SYNC_INTERVAL_SECONDS=60}" },
+    "syncVaultEncrypted": { "value": "${VAULT_SYNC_VAULT_ENCRYPTED=true}" },
+    "syncLoginFromKeyVault": { "value": "${VAULT_SYNC_LOGIN_FROM_KEY_VAULT=false}" },
+    "deployerPrincipalId": { "value": "${VAULT_DEPLOYER_PRINCIPAL_ID}" },
+    "authMode": { "value": "${VAULT_AUTH_MODE=Locked}" },
+    "entraClientId": { "value": "${VAULT_ENTRA_CLIENT_ID}" },
+    "entraAllowedClientIds": { "value": "${VAULT_ENTRA_ALLOWED_CLIENT_IDS}" },
+    "entraRequiredRole": { "value": "${VAULT_ENTRA_REQUIRED_ROLE=Vault.Reader}" }
+  }
+}

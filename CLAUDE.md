@@ -41,6 +41,7 @@ azurite --silent --location .azurite --skipApiVersionCheck &   # Blob/Queue emul
 (cd src/AdrMcp.Functions && func start --port 7071)
 python3 scripts/smoke-test.py --url http://localhost:7071/runtime/webhooks/mcp --write
 bicep build infra/main.bicep --stdout > /dev/null && bicep lint infra/main.bicep
+bicep build infra/vault/main.bicep --stdout > /dev/null && bicep lint infra/vault/main.bicep   # the vault server's own template (ADR-0010)
 ```
 
 ## Layout
@@ -50,7 +51,7 @@ bicep build infra/main.bicep --stdout > /dev/null && bicep lint infra/main.bicep
 - C# 12, file-scoped namespaces, nullable enabled (nullable warnings are errors), records for immutable data, `AppJson.Options` for all JSON.
 - Add a technology detector by implementing `ITechnologyDetector`; a drift check by implementing `IDriftDetector`; a contradiction rule by `IContradictionRule`; a safety rule by `ISafetyReviewRule`. Register in `AdrMcp.Analysis/ServiceCollectionExtensions.cs`. Nothing else changes.
 - Keep tool outputs compact (summaries, truncated excerpts) to protect the client context window.
-- Azure names and tags follow [ADR-0009](docs/adr/ADR-0009-azure-naming-convention.md): `<abbreviation>-<workload>-<environment>-<region code>-<nn>`, abbreviations from Microsoft's published list in `infra/abbreviations.json`, region codes in `infra/region-codes.json`. Build every name in `infra/main.bicep`, never inside a module. After touching `infra/`, run `dotnet test tests/AdrMcp.UnitTests --filter ResourceNamingTests` (needs Bicep 0.41.2 or newer: `az bicep install`).
+- Azure names and tags follow [ADR-0009](docs/adr/ADR-0009-azure-naming-convention.md): `<abbreviation>-<workload>-<environment>-<region code>-<nn>`, abbreviations from Microsoft's published list in `infra/abbreviations.json`, region codes in `infra/region-codes.json`. Build every name in the entry template (`infra/main.bicep` for the ADR server, `infra/vault/main.bicep` for the vault server), never inside a module. After touching `infra/`, run `dotnet test tests/AdrMcp.UnitTests --filter ResourceNamingTests` (needs Bicep 0.41.2 or newer: `az bicep install`).
 - Commit messages: imperative, scoped (`analysis: add helm values detector`). Do not commit `local.settings.json`, `.azure/`, `dist/`.
 
 ## Agents

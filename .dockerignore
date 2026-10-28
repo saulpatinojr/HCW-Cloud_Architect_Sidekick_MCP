@@ -1,0 +1,20 @@
+# Keep the image build context small and free of local state (src/VaultMcp/Dockerfile builds from the repository root).
+**/bin/
+**/obj/
+**/TestResults/
+**/__pycache__/
+.git/
+.github/
+.azure/
+.azurite/
+.vscode/
+.claude/
+docs/
+tests/
+tools/
+infra/
+samples/
+dist/
+**/local.settings.json
+.env
+.env.*

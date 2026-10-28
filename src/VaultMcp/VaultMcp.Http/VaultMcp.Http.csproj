@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Remote host (ADR-0010 phase 2, Route A): the same read-only vault tools over the MCP streamable HTTP transport,
+       meant to run in a container next to the headless Obsidian Sync client. Locked by default: see Program.cs. -->
+  <PropertyGroup>
+    <RootNamespace>VaultMcp.Http</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VaultMcp.Core\VaultMcp.Core.csproj" />
+    <ProjectReference Include="..\VaultMcp.Tools\VaultMcp.Tools.csproj" />
+  </ItemGroup>
+</Project>

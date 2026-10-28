@@ -18,11 +18,31 @@ param containerName string = 'vault'
 param targetPort int = 8080
 param storageDefinitionName string
 param mountPath string = '/vault'
+@description('Locked (no sign-in yet: 401 on /mcp) or Entra (step 3).')
+@allowed([ 'Locked', 'Entra' ])
+param authMode string = 'Locked'
+param entraTenantId string = ''
+param entraClientId string = ''
+param entraAllowedClientIds string = ''
+param entraRequiredRole string = 'Vault.Reader'
+@description('The canonical MCP URL (https://<fqdn>/mcp) the host puts in its challenges and metadata; built by the entry template.')
+param resourceUri string = ''
 
 resource existingApp 'Microsoft.App/containerApps@2025-07-01' existing = if (exists) { name: name }
 
 var image = exists ? existingApp!.properties.template.containers[0].image : placeholderImage
 var isPlaceholder = image == placeholderImage
+
+// Settings (the __ stands for :). None in Locked mode: with Vault__Auth__Mode unset the host stays Locked, and Anonymous would be
+// refused here anyway (CONTAINER_APP_NAME). In Entra mode the host checks every value at start and refuses to run on a bad one.
+var authEnv = authMode == 'Entra' ? [
+  { name: 'Vault__Auth__Mode', value: 'Entra' }
+  { name: 'Vault__Auth__Entra__TenantId', value: entraTenantId }
+  { name: 'Vault__Auth__Entra__ClientId', value: entraClientId }
+  { name: 'Vault__Auth__Entra__AllowedClientIds', value: entraAllowedClientIds }
+  { name: 'Vault__Auth__Entra__RequiredRole', value: entraRequiredRole }
+  { name: 'Vault__Auth__Entra__ResourceUri', value: resourceUri }
+] : []
 
 var healthProbes = [
   {
@@ -81,8 +101,8 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
         {
           name: containerName
           image: image
-          // Vault__Path=/vault is baked into the image; Vault__Auth__Mode is deliberately not set, so the host stays Locked
-          // (401 on /mcp) until the sign-in layer of step 3 exists. Anonymous would be refused here anyway (CONTAINER_APP_NAME).
+          // Vault__Path=/vault is baked into the image.
+          env: authEnv
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           volumeMounts: [ { volumeName: 'vault', mountPath: mountPath } ]
           probes: isPlaceholder ? tcpProbes : healthProbes

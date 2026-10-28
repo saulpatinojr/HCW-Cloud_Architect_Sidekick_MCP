@@ -73,6 +73,22 @@ param syncLoginFromKeyVault bool = false
 @description('Opt-in: principal id (object id) of the person who will put the step 2 secrets into Key Vault (Key Vault Secrets Officer). Set VAULT_DEPLOYER_PRINCIPAL_ID yourself; it is deliberately not AZURE_PRINCIPAL_ID, which azd fills in on every provision, so nobody gets the role by accident.')
 param deployerPrincipalId string = ''
 
+@description('Step 3: who may call /mcp. Locked (default): 401 for everyone. Entra: Microsoft Entra ID sign-in with the vault server\'s own app registration (ADR-0010 design item 3, the ADR-0008 pattern); needs entraClientId and entraAllowedClientIds, and the host refuses to start without a valid set.')
+@allowed([ 'Locked', 'Entra' ])
+param authMode string = 'Locked'
+
+@description('Step 3: the Entra tenant (directory) id the tokens come from. Default: the tenant this deployment runs in.')
+param entraTenantId string = tenant().tenantId
+
+@description('Step 3: client (application) id of the vault server\'s app registration; it is the token audience. Required when authMode is Entra.')
+param entraClientId string = ''
+
+@description('Step 3: comma-separated client ids of the MCP client applications allowed to call (the token\'s azp claim). Required when authMode is Entra: an empty list would accept every client, so the host refuses it.')
+param entraAllowedClientIds string = ''
+
+@description('Step 3: the app role (value in scripts/entra/vault-app-roles.json) a signed-in user must hold.')
+param entraRequiredRole string = 'Vault.Reader'
+
 // ---- Naming (ADR-0009) --------------------------------------------------------------------------------------------------
 // Pattern: <abbreviation>-<workload>-<environment>-<region code>-<instance>, for example ca-vault-dev-scus-01.
 // The storage account and the container registry allow lower-case letters and digits only, so they have no hyphens.
@@ -106,7 +122,9 @@ var nameProblem = empty(regionCode)
         ? 'The Key Vault name ${keyVaultName} is longer than the 24 characters Azure allows. Shorten workloadName, environmentShort or nameSuffix.'
         : syncEnabled && empty(syncRemoteVault)
           ? 'syncEnabled needs the remote vault: set VAULT_SYNC_REMOTE_VAULT to the name of the vault on Obsidian Sync.'
-          : ''
+          : authMode == 'Entra' && (empty(entraClientId) || empty(entraAllowedClientIds))
+            ? 'authMode Entra needs the vault server app registration: set VAULT_ENTRA_CLIENT_ID to its client id and VAULT_ENTRA_ALLOWED_CLIENT_IDS to the client ids of the MCP clients allowed to call (comma-separated). See src/VaultMcp/README.md, step 3.'
+            : ''
 
 var names = !empty(nameProblem)
   ? fail(nameProblem)
@@ -235,6 +253,14 @@ module containerApp './modules/containerapp.bicep' = {
     registryLoginServer: registry.outputs.loginServer
     exists: vaultExists
     storageDefinitionName: environment.outputs.storageDefinitionName
+    authMode: authMode
+    entraTenantId: entraTenantId
+    entraClientId: entraClientId
+    entraAllowedClientIds: entraAllowedClientIds
+    entraRequiredRole: entraRequiredRole
+    // The app's public address is <name>.<environment default domain>, known before the app exists; the host uses it as the
+    // canonical MCP URL in its challenges and protected resource metadata (RFC 9728), so the two always agree.
+    resourceUri: 'https://${names.containerApp}.${environment.outputs.defaultDomain}/mcp'
   }
 }
 
@@ -269,6 +295,8 @@ output AZURE_CONTAINER_APP_NAME string = containerApp.outputs.name
 output AZURE_SYNC_CONTAINER_APP_NAME string = syncEnabled ? containerAppSync.?outputs.name ?? '' : ''
 output VAULT_MCP_ENDPOINT string = 'https://${containerApp.outputs.fqdn}/mcp'
 output VAULT_HEALTH_URL string = 'https://${containerApp.outputs.fqdn}/health'
+output VAULT_AUTH_MODE string = authMode
+output VAULT_RESOURCE_METADATA_URL string = authMode == 'Entra' ? 'https://${containerApp.outputs.fqdn}/.well-known/oauth-protected-resource/mcp' : ''
 output AZURE_STORAGE_ACCOUNT string = storage.outputs.name
 output AZURE_FILE_SHARE string = storage.outputs.shareName
 output AZURE_KEY_VAULT_NAME string = keyVault.outputs.name

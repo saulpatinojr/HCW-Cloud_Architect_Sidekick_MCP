@@ -1,0 +1,16 @@
+{
+  "api": {
+    "oauth2PermissionScopes": [
+      {
+        "adminConsentDescription": "Lets an application call the Obsidian vault MCP server on behalf of the signed-in user. What the user may read is decided by the user's Vault.Reader app role and by the allow-list note inside the vault.",
+        "adminConsentDisplayName": "Access the Obsidian vault MCP server",
+        "id": "a93d2c41-6e8f-4b17-9c5d-2f0e1b8a7d63",
+        "isEnabled": true,
+        "type": "User",
+        "userConsentDescription": "Lets this application read your allow-listed Obsidian notes through the vault MCP server as you.",
+        "userConsentDisplayName": "Access the Obsidian vault MCP server as you",
+        "value": "user_impersonation"
+      }
+    ]
+  }
+}

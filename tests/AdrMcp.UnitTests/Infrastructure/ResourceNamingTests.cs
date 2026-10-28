@@ -267,7 +267,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01").Node;
         var container = app["properties"]!["template"]!["containers"]![0]!;
         var env = container["env"]?.AsArray().Select(e => e!["name"]!.GetValue<string>()) ?? [];
-        Assert.DoesNotContain("Vault__Auth__Mode", env);   // unset means Locked: 401 on /mcp until step 3 adds sign-in
+        Assert.DoesNotContain("Vault__Auth__Mode", env);   // unset means Locked: 401 on /mcp until VAULT_AUTH_MODE=Entra is set (step 3)
         Assert.Equal("/vault", container["volumeMounts"]![0]!["mountPath"]!.GetValue<string>());
         Assert.False(app["properties"]!["configuration"]!["ingress"]!["allowInsecure"]!.GetValue<bool>());
         Assert.Equal(8080, app["properties"]!["configuration"]!["ingress"]!["targetPort"]!.GetValue<int>());
@@ -361,6 +361,29 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     }
 
     [BicepFact]
+    public async Task Entra_mode_hands_the_vault_server_its_settings_and_the_address_it_must_name_in_its_challenges()
+    {
+        // ADR-0010 phase 2, step 3: the only change to the template is the settings on the server app; nothing else moves.
+        var snapshot = await _bicep.Get("vault:entra");
+        Assert.True(snapshot.Succeeded, snapshot.Output);
+        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+
+        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01").Node;
+        var env = app["properties"]!["template"]!["containers"]![0]!["env"]!.AsArray().ToDictionary(e => e!["name"]!.GetValue<string>(), e => e!["value"]!.GetValue<string>());
+        Assert.Equal("Entra", env["Vault__Auth__Mode"]);
+        Assert.Equal("66666666-7777-8888-9999-aaaaaaaaaaaa", env["Vault__Auth__Entra__ClientId"]);
+        Assert.Equal("bbbbbbbb-cccc-dddd-eeee-ffffffffffff,cccccccc-dddd-eeee-ffff-000000000000", env["Vault__Auth__Entra__AllowedClientIds"]);
+        Assert.Equal("Vault.Reader", env["Vault__Auth__Entra__RequiredRole"]);
+        Assert.Contains("tenant()", env["Vault__Auth__Entra__TenantId"]);   // the deploying tenant by default (an expression offline)
+        // The canonical MCP URL is built from the app's own name and the environment's domain, known before the app exists
+        // (an expression offline, because the domain is read from the environment resource).
+        Assert.Matches(@"^\[format\('https://\{0\}\.\{1\}/mcp', 'ca-vault-dev-scus-01', .*\)\]$", env["Vault__Auth__Entra__ResourceUri"]);
+        Assert.DoesNotContain(env.Keys, k => k.Contains("Secret", StringComparison.OrdinalIgnoreCase));   // ids only; no secret exists for this flow
+        Assert.Empty(app["properties"]!["configuration"]!["secrets"]?.AsArray() ?? []);
+    }
+
+    [BicepFact]
     public async Task The_vault_suffix_goes_on_the_three_global_names_and_nowhere_else()
     {
         var snapshot = await _bicep.Get("vault:suffix");
@@ -395,6 +418,8 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("reserved-workload", "must start with \"vault\"")]
     [InlineData("custom-workload", "must start with \"vault\"")]
     [InlineData("sync-vault", "VAULT_SYNC_REMOTE_VAULT")]
+    [InlineData("entra-client", "VAULT_ENTRA_CLIENT_ID")]
+    [InlineData("entra-allowed", "VAULT_ENTRA_ALLOWED_CLIENT_IDS")]
     public async Task A_vault_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"vault:reject:{parameter}");
@@ -730,6 +755,9 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["vault:exists"] = Parameters("southcentralus", ("vaultExists", "true"), ("shareAuth", Quote("AccountKey")));   // every later provision, and the key fallback
         scenarios["vault:sync"] = Parameters("southcentralus", ("syncEnabled", "true"), ("syncRemoteVault", Quote("My Vault")), ("syncExcludeSeed", Quote("Personal,Journal")), ("syncLoginFromKeyVault", "true"));   // step 2: the headless Sync app
         scenarios["vault:reject:sync-vault"] = Parameters("southcentralus", ("syncEnabled", "true"));   // sync on without a remote vault name
+        scenarios["vault:entra"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff,cccccccc-dddd-eeee-ffff-000000000000")));   // step 3: sign-in on (made-up ids)
+        scenarios["vault:reject:entra-client"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")));   // sign-in on without the server app's client id
+        scenarios["vault:reject:entra-allowed"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")));   // sign-in on without an allowed client
         scenarios["vault:long:westcentralus"] = InEnvironment("prod", Parameters("westcentralus", ("workloadName", Quote("vaultmc")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));   // kv-vaultmc-prod-wcus-01b = 24
         scenarios["vault:reject:location"] = Parameters("brazilsouth");
         scenarios["vault:reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));

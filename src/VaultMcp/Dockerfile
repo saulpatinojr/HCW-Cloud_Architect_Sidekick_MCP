@@ -3,7 +3,8 @@
 #   docker build -f src/VaultMcp/Dockerfile -t vault-mcp .
 # Run with the vault copy mounted at /vault (read-only is enough; the server never writes):
 #   docker run --rm -p 8080:8080 -v "<vault>:/vault:ro" -e Vault__Auth__Mode=Anonymous vault-mcp
-# Without Vault__Auth__Mode the server starts Locked and answers 401 on /mcp until a sign-in layer is configured.
+# Without Vault__Auth__Mode the server starts Locked and answers 401 on /mcp. Vault__Auth__Mode=Entra turns on the
+# Microsoft Entra ID sign-in (phase 2, step 3) and needs the Vault__Auth__Entra__* settings; see README.md.
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src

@@ -63,7 +63,7 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '22' }
       - name: Test the sync sidecar's allow-list logic
-        run: node --test src/VaultMcp/sync
+        run: node --test 'src/VaultMcp/sync/*.test.mjs'
       - name: Build the sync sidecar image and check it refuses to start unconfigured
         run: |
           set -eu

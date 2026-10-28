@@ -12,7 +12,7 @@ on:
       - 'global.json'
       - '.github/workflows/vault-mcp.yml'
   pull_request:
-    branches: [ main ]
+    # Any base branch: a stacked pull request (one that targets another feature branch) still gets this check.
     paths:
       - 'src/VaultMcp/**'
       - 'Directory.Build.props'

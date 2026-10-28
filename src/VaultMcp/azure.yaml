@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# azd project for the Obsidian vault MCP server (ADR-0010, phase 2, Route A). Separate from the ADR server's azure.yaml at the
+# repository root: its own azd environment (vault-dev), its own resource group and its own template (infra/vault/main.bicep).
+# Run azd from this folder: `cd src/VaultMcp`. The environment files land in src/VaultMcp/.azure/ (git-ignored).
+name: vault-mcp
+metadata:
+  template: vault-mcp@0.1.0
+infra:
+  provider: bicep
+  path: ../../infra/vault
+  module: main
+services:
+  vault:
+    project: .
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: ../../      # the Dockerfile copies Directory.Build.props and Directory.Packages.props from the repository root
+      remoteBuild: true    # built by Azure Container Registry; no Docker on your machine

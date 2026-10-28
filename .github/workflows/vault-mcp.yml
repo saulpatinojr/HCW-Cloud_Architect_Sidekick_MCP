@@ -1,12 +1,17 @@
 name: vault-mcp
 
 # The Obsidian vault MCP server (src/VaultMcp, ADR-0010) has its own solution that AdrMcp.sln never references,
-# so it gets its own small check. It never deploys anything.
+# so it gets its own small check. It never deploys anything; the owner provisions the vault server with azd from src/VaultMcp (README).
 on:
   push:
     branches: [ main ]
     paths:
       - 'src/VaultMcp/**'
+      - 'infra/vault/**'
+      - 'infra/modules/identity.bicep'
+      - 'infra/modules/keyvault.bicep'
+      - 'infra/abbreviations.json'
+      - 'infra/region-codes.json'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'global.json'
@@ -15,6 +20,11 @@ on:
     # Any base branch: a stacked pull request (one that targets another feature branch) still gets this check.
     paths:
       - 'src/VaultMcp/**'
+      - 'infra/vault/**'
+      - 'infra/modules/identity.bicep'
+      - 'infra/modules/keyvault.bicep'
+      - 'infra/abbreviations.json'
+      - 'infra/region-codes.json'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'global.json'
@@ -50,6 +60,13 @@ jobs:
 
       - name: Smoke test the stdio host over the real protocol
         run: python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll
+
+      # The Azure template of the HTTP host (ADR-0010 phase 2, step 1b). Built and linted only; the naming tests in ci-cd evaluate it too.
+      - name: Bicep build + lint (infra/vault/main.bicep)
+        run: |
+          az bicep install
+          az bicep build --file infra/vault/main.bicep --stdout > /dev/null
+          az bicep lint --file infra/vault/main.bicep
 
       # The container image for the HTTP host (phase 2). Built, started against a throw-away vault and driven over
       # streamable HTTP; never pushed from here.

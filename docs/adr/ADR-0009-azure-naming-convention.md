@@ -114,3 +114,25 @@ Length budget: with the default parts and a region code of four characters (the 
 - **Before the old group is deleted** (parts A to C of the runbook): delete the new group `rg-adr-dev-scus-01` with `az group delete`, put back the Application ID URIs noted in the runbook, and point clients back. Nothing else was touched.
 - **After the delete** there is no undo for the data. The old Key Vault can be recovered for 90 days (`az keyvault recover`), which brings back the vault and its secret, not the data. Because the old vault name is reserved for 90 days, **recover it first** if you revert this pull request and deploy the old template within that time; otherwise the old template fails with a "vault already exists" error. After 90 days the name is free again.
 - Do not use `azd down` while both groups exist: it deletes the group recorded by the most recent deployment (the new one after this change, the old-named one after a revert and a deploy), which may not be the one you want gone. Delete the unwanted group by name with `az group delete`.
+
+## Update 2026-10-28: a second workload, `vault` (ADR-0010 phase 2)
+The Obsidian vault MCP server ([ADR-0010](ADR-0010-obsidian-second-brain.md)) is deployed by a second entry template, `infra/vault/main.bicep`, from its own azd project (`src/VaultMcp/azure.yaml`, azd environment `vault-dev`) into its own resource group. The convention applies unchanged. What is new:
+- **Workload** `vault`, so `rg-vault-dev-scus-01`; the tag `application` is `vault-mcp` (the application the workload serves; `adr-mcp` stays on the ADR server's resources). The `component` values are the same five.
+- **Abbreviations** added from Microsoft's list: `ca` (container app), `cae` (Container Apps environment), `cr` (container registry). A registry name allows letters and digits only, so it has no hyphens: `crvaultdevscus01`.
+- **Global names** in this template: the container registry, the Key Vault and the storage account take `nameSuffix` (`VAULT_NAME_SUFFIX`). The container app's host name is `<app name>.<environment's unique domain>.<region>.azurecontainerapps.io`, so the app name is unique per environment, not across Azure, and takes no suffix.
+- **Parameters:** `VAULT_WORKLOAD_NAME` (default `vault`), `VAULT_ENVIRONMENT_SHORT` (default `dev`), `VAULT_NAME_SUFFIX`. The azd environment name must end with `-<environmentShort>` (`vault-dev`), as for the ADR server, and the same stop-before-creating checks apply.
+- **Data names** (decision 8): the file share and the environment's storage definition are both `vault`; the diagnostic setting is `log-analytics`.
+- `ResourceNamingTests` evaluates this template too, for every region, with the rules below, and checks that the two workloads share no name in one subscription and region. "Build every name in the entry template" now means `infra/main.bicep` or `infra/vault/main.bicep`; modules still build none.
+
+| Resource | Name | Chars | Limit | Characters allowed | Scope | Result |
+|---|---|---|---|---|---|---|
+| Resource group | `rg-vault-dev-scus-01` | 20 | 1-90 | as above | subscription | pass |
+| Container app | `ca-vault-dev-scus-01` | 20 | 2-32 | lower-case letters, digits, hyphens; start with a letter, end with a letter or digit | resource group | pass |
+| Container Apps environment | `cae-vault-dev-scus-01` | 21 | not listed on the Learn page (read 2026-10-28); the test applies the container app rule | resource group | pass |
+| Container registry | `crvaultdevscus01` | 16 | 5-50 | letters and digits only | **global** | pass |
+| Key Vault | `kv-vault-dev-scus-01` | 20 | 3-24 | as above | **global** | pass |
+| Storage account | `stvaultdevscus01` | 16 | 3-24 | lower-case letters and digits only | **global** | pass |
+| Log Analytics workspace | `log-vault-dev-scus-01` | 21 | 4-63 | as above | resource group | pass |
+| Managed identity | `id-vault-dev-scus-01` | 20 | 3-128 | as above | resource group | pass |
+
+Length budget: the Key Vault name is again the tightest. With a 4-character region code, `kv-vault-dev-wcus-01` has 20 characters, so 4 remain for a longer workload, environment or suffix; `kv-vaultmc-prod-wcus-01b` (24) is the longest the test proves.

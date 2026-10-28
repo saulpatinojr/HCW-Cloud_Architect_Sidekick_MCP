@@ -90,7 +90,7 @@ azd provision                                  # Bicep: RG, identity, storage, C
 
 ### Resource names and tags
 
-Every name is built in one place, `infra/main.bicep`, from `<abbreviation>-<workload>-<environment>-<region code>-<nn>`. The abbreviations are Microsoft's published ones ([list](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/azure-best-practices/resource-abbreviations)); the reasons and the Azure name rules are in [ADR-0009](adr/ADR-0009-azure-naming-convention.md). With the defaults (`ADR_WORKLOAD_NAME=adr`, `ADR_ENVIRONMENT_SHORT=dev`) in `southcentralus` you get:
+Every name is built in the entry template, `infra/main.bicep` (the vault server of ADR-0010 has its own, `infra/vault/main.bicep`, see below), from `<abbreviation>-<workload>-<environment>-<region code>-<nn>`. The abbreviations are Microsoft's published ones ([list](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/azure-best-practices/resource-abbreviations)); the reasons and the Azure name rules are in [ADR-0009](adr/ADR-0009-azure-naming-convention.md). With the defaults (`ADR_WORKLOAD_NAME=adr`, `ADR_ENVIRONMENT_SHORT=dev`) in `southcentralus` you get:
 
 | Resource | Name |
 |---|---|
@@ -109,6 +109,7 @@ Things to know:
 - The function app, the Cosmos DB account, the Key Vault and the storage account must be unique in all of Azure. If Azure says one is taken (for example a Key Vault that is still soft-deleted), set a suffix and provision again: `azd env set ADR_NAME_SUFFIX b` (in GitHub: the repository variable `ADR_NAME_SUFFIX`). The suffix goes on those four names only, for example `kv-adr-dev-scus-01b`. Use lower-case letters and digits, at most four.
 - Tags on the group and every resource: `workload` (`adr`), `application` (`adr-mcp`), `environment` (`dev`), `azd-env-name` (`adr-dev`), and `component` (`api`, `data`, `security`, `monitoring` or `network`) on each resource.
 - Changing a name later means replacing the resource. Azure cannot rename most resources.
+- The Obsidian vault MCP server ([ADR-0010](adr/ADR-0010-obsidian-second-brain.md)) is a second workload, `vault`, with its own azd project in `src/VaultMcp/` (environment `vault-dev`, variables `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT`, `VAULT_NAME_SUFFIX`) and its own resource group `rg-vault-dev-scus-01`. Nothing in it touches the ADR server's environment. The steps are in the [vault server README](../src/VaultMcp/README.md#deploy-the-http-host-to-azure-phase-2-step-1b).
 
 `scripts/postprovision.sh` creates the Key Vault secret `principal-hash-salt` (random) that the app reads through a Key Vault reference. It never overwrites an existing secret, and it waits (up to ~5 minutes) for the Key Vault role assigned in the same provision to propagate instead of failing on the first 403. The salt is passed to `az` through a private temporary file, never on the command line. With `ADR_PRIVATE_NETWORKING=true` the vault refuses public traffic, so the hook stops at once with a network error: run `azd provision` from a network that reaches the vault's private endpoint, or create the secret from there.
 

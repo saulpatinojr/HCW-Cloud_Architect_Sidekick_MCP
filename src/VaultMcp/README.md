@@ -78,7 +78,7 @@ To remove: `claude mcp remove vault`, or delete the JSON block.
 
 ## HTTP host and container (phase 2, Route A)
 
-`VaultMcp.Http` serves the same four tools over the MCP streamable HTTP transport at `/mcp`, plus `GET /health`. It is meant for one container in Azure Container Apps that sits next to Obsidian's headless Sync client and reads the synced copy from a mounted share. Settings (environment variables; `__` stands for `:`):
+`VaultMcp.Http` serves the same four tools over the MCP streamable HTTP transport at `/mcp`, plus `GET /health`. It is meant for one container in Azure Container Apps that sits next to Obsidian's headless Sync client and reads the synced copy from a mounted share. The Azure side is [below](#deploy-the-http-host-to-azure-phase-2-step-1b). Settings (environment variables; `__` stands for `:`):
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -106,6 +106,43 @@ docker run --rm -p 8080:8080 -v "<vault>:/vault:ro" -e Vault__Auth__Mode=Anonymo
 
 The image runs as the non-root `app` user on port 8080 and never writes to `/vault`, so a read-only mount is enough. The `vault-mcp` workflow builds this image on every change and drives it over HTTP with the smoke test below.
 
+## Deploy the HTTP host to Azure (phase 2, step 1b)
+
+The vault server has its own azd project (`src/VaultMcp/azure.yaml`) and its own template (`infra/vault/main.bicep`), separate from the ADR server's at the repository root. One `azd provision` creates one resource group with [ADR-0009](../../docs/adr/ADR-0009-azure-naming-convention.md) names, workload `vault`:
+
+| Resource | Name (defaults, South Central US) | Job |
+|---|---|---|
+| Resource group | `rg-vault-dev-scus-01` | holds everything below |
+| Container app | `ca-vault-dev-scus-01` | the HTTP host: one replica, HTTPS on the internet, **Locked** (401 on `/mcp`) until step 3 |
+| Container Apps environment | `cae-vault-dev-scus-01` | runs it; mounts the share read-only with its managed identity |
+| Container registry | `crvaultdevscus01` | holds the image; `azd deploy` builds it there, so you need no Docker |
+| Storage account, file share | `stvaultdevscus01`, share `vault` | the synced copy of the allow-listed folders (written by step 2; empty now) |
+| Key Vault | `kv-vault-dev-scus-01` | the step 2 secrets (Sync credentials, vault password); empty now |
+| Log Analytics, managed identity | `log-vault-dev-scus-01`, `id-vault-dev-scus-01` | logs; the identity that pulls the image, mounts the share and reads Key Vault |
+
+No key, connection string or secret appears in the template or its outputs: the image is pulled and the share is mounted with the identity (the share mount uses "Managed Identity for SMB", a preview feature; `azd env set VAULT_SHARE_AUTH AccountKey` is the fallback if your region does not have it yet, and it is the only setting that turns shared-key access on for that storage account).
+
+**You need:** the Azure CLI and the Azure Developer CLI, signed in to a subscription where you can create resource groups and role assignments (Owner, or Contributor plus Role Based Access Control Administrator). Reference: [Install azd](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd).
+
+1. Open a terminal in `src/VaultMcp` (the ADR server's azd project is at the repository root; do not mix the two).
+2. Run `azd auth login`, then `azd env new vault-dev`. The name must end with `-dev`, the environment part of every resource name. You should see `.azure/vault-dev/` appear (it is git-ignored).
+3. Run `azd env set AZURE_LOCATION southcentralus` (or another region in `infra/region-codes.json`), then `azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"` so that you may put the step 2 secrets into Key Vault later (skip it in production).
+4. Run `azd provision`. Expect 5 to 10 minutes and, at the end, a list of outputs that includes `VAULT_MCP_ENDPOINT`. The app runs Microsoft's quickstart placeholder image until the next step. If it stops at the file share link with an authorization error, wait a minute and run it again: a new role assignment can take that long to apply.
+5. Run `azd deploy vault`. Expect lines about building the image in the registry, then `Deploying service vault` and the endpoint. The placeholder is replaced by the vault server.
+6. Run `azd provision` once more. Now that the real image runs, this turns on the `/health` probes; the template keeps the image you deployed (the `exists` pattern azd documents for Container Apps). Until then the platform's default TCP probes apply.
+7. Check: `curl -i "$(azd env get-value VAULT_HEALTH_URL)"` answers `200` with `{"status":"ok","mode":"Locked","settingsNote":false}` (`settingsNote` turns true once step 2 syncs `adr-sidekick.md` into the share), and `curl -i "$(azd env get-value VAULT_MCP_ENDPOINT)"` answers `401` with a `WWW-Authenticate: Bearer` header. Nothing is readable yet, by design.
+
+Settings (`azd env set NAME VALUE`, all optional):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT` | `vault`, `dev` | the words in every resource name (ADR-0009); the azd environment name must end with `-<VAULT_ENVIRONMENT_SHORT>` |
+| `VAULT_NAME_SUFFIX` | empty | appended to the three globally unique names (registry, Key Vault, storage account) when one is taken, for example a Key Vault still soft-deleted |
+| `VAULT_SHARE_AUTH` | `ManagedIdentity` | `AccountKey` only as the fallback described above |
+| `VAULT_SHARE_QUOTA_GIB` | `5` | size limit of the share |
+
+To undo: `azd down` from the same folder deletes the resource group. The Key Vault keeps its name reserved for 90 days (purge protection, as for the ADR server); set `VAULT_NAME_SUFFIX` if you create the environment again within that time. Preview first with `azd provision --preview`.
+
 ## Tests
 
 ```bash
@@ -121,5 +158,5 @@ The unit tests run against a throw-away vault on disk and cover: nothing readabl
 ## Not yet
 
 - Sign-in for the HTTP host: it stays `Locked` until step 3 of phase 2 adds the Entra layer ([ADR-0008](../../docs/adr/ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) pattern, the vault's own app registration).
-- The headless Sync container next to it (step 2) and the Bicep that deploys both (step 1b).
+- The headless Sync container next to it (step 2): a read-write mount of the same share, `ob sync-config` from `adr-sidekick.md`, the Sync credentials and vault password in the Key Vault the template already creates.
 - Uploading notes to the ADR server as evidence (level B in ADR-0010).

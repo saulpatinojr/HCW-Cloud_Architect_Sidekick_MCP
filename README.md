@@ -194,7 +194,7 @@ Full details and the STRIDE table: [Security & threat model](docs/04-security-th
 | — | [Importing existing ADRs](docs/10-legacy-adr-import.md) |
 | — | [Entra sign-in](docs/11-entra-sign-in.md) |
 | — | [Entra sign-in checklist (owner steps)](docs/12-entra-sign-in-checklist.md) |
-| — | [Obsidian vault MCP server](src/VaultMcp/README.md) (ADR-0010, phase 1; standalone, read-only) |
+| — | [Obsidian vault MCP server](src/VaultMcp/README.md) (ADR-0010; standalone, read-only; local stdio host and the Azure HTTP host with its own azd project) |
 
 ## Project status
 

@@ -10,5 +10,8 @@
   "webServerFarms": "asp",
   "networkVirtualNetworks": "vnet",
   "networkVirtualNetworksSubnets": "snet",
-  "networkPrivateEndpoints": "pep"
+  "networkPrivateEndpoints": "pep",
+  "appContainerApps": "ca",
+  "appManagedEnvironments": "cae",
+  "containerRegistryRegistries": "cr"
 }

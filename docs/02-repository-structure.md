@@ -19,7 +19,7 @@
 ├── docs/
 │   ├── 00-source-assessment.md        # A
 │   ├── 01-architecture.md             # B (Mermaid diagrams, trust boundaries, data flow, failure paths)
-│   ├── adr/ADR-0001 … ADR-0009        # C (ADR-0009: Azure naming convention)
+│   ├── adr/ADR-0001 … ADR-0010        # C (ADR-0009: Azure naming convention; ADR-0010: Obsidian vault as optional context, Proposed)
 │   ├── 02-repository-structure.md     # D (this file)
 │   ├── 03-mcp-contracts.md            # F (generated from ToolCatalog by tools/AdrMcp.DocGen)
 │   ├── 04-security-threat-model.md    # §17 threat model, §9 content safety, §8 upload policy
@@ -29,7 +29,8 @@
 │   ├── 08-roadmap.md                  # L
 │   ├── 09-fitness-functions-and-memory.md  # §14, §15, §16
 │   ├── 10-legacy-adr-import.md
-│   └── 11-entra-sign-in.md            # Entra sign-in: settings, reason codes, real-tenant runbook (ADR-0008)
+│   ├── 11-entra-sign-in.md            # Entra sign-in: settings, reason codes, real-tenant runbook (ADR-0008)
+│   └── 12-entra-sign-in-checklist.md  # owner tick-off list for the tenant half of issue #27 (P1, MFA, sandbox, clients)
 ├── infra/
 │   ├── main.bicep · main.parameters.json · abbreviations.json · region-codes.json   # names are built in main.bicep (ADR-0009)
 │   └── modules/{identity,monitoring,network,storage,cosmos,keyvault,functionapp,rbac,private-endpoint}.bicep

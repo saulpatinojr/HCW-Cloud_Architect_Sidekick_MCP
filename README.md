@@ -193,6 +193,7 @@ Full details and the STRIDE table: [Security & threat model](docs/04-security-th
 | — | [Fitness functions, memory, async jobs](docs/09-fitness-functions-and-memory.md) |
 | — | [Importing existing ADRs](docs/10-legacy-adr-import.md) |
 | — | [Entra sign-in](docs/11-entra-sign-in.md) |
+| — | [Entra sign-in checklist (owner steps)](docs/12-entra-sign-in-checklist.md) |
 
 ## Project status
 

@@ -83,7 +83,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
       ]
       scale: { minReplicas: 1, maxReplicas: 1 } // one writer of the share, always on
       volumes: [
-        // uid/gid 1001 is the non-root "sync" user of the image; the share is mounted as that user so it can write.
+        // uid/gid 1001 is the non-root "vaultsync" user of the image; the share is mounted as that user so it can write.
         { name: 'vault', storageType: 'AzureFile', storageName: vaultStorageDefinitionName, mountOptions: 'uid=1001,gid=1001,dir_mode=0770,file_mode=0660' }
         { name: 'state', storageType: 'AzureFile', storageName: stateStorageDefinitionName, mountOptions: 'uid=1001,gid=1001,dir_mode=0700,file_mode=0600' }
       ]

@@ -67,7 +67,7 @@ In `EntraBuiltIn` mode the `ci-cd` deploy job cannot run the tool smoke test, be
 ADR_MCP_BEARER="$ACCESS_TOKEN" python3 scripts/smoke-test.py --url https://<app>.azurewebsites.net/runtime/webhooks/mcp
 ```
 
-How to get a token for the `user_impersonation` scope is shown for a sandbox tenant in step 5 of the runbook in [Entra sign-in](11-entra-sign-in.md). Getting one for the dev environment is not yet verified.
+How to get a token for the `user_impersonation` scope is shown for a sandbox tenant in step 5 of the runbook in [Entra sign-in](11-entra-sign-in.md). Getting one for the dev environment is not yet verified. The deploy job can run a read-only version itself with its own identity (`--read-only`; docs/11, "Pipeline access") once the owner turns `ADR_ENTRA_PIPELINE_READ` on.
 
 ## File uploads from Claude
 

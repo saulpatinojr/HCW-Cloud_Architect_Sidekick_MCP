@@ -19,6 +19,8 @@ param entraClientId string = ''
 param entraTenantId string = ''
 @description('Comma-separated client IDs of the applications allowed to obtain tokens for this server.')
 param entraAllowedClientIds string = ''
+@description('EntraBuiltIn only: client ID of the one application (the deploy pipeline) allowed to read with no signed-in user. Added to the allowed client IDs; with entraValidateInApp the in-app check accepts application tokens too. Empty: no application may call.')
+param entraPipelineClientId string = ''
 @description('EntraBuiltIn only: also verify the bearer token inside the app (signature, issuer, tenant, audience, client, scope, role), in addition to App Service Authentication at the edge. Off by default; turn it on after the runbook in docs/11-entra-sign-in.md passes (ADR-0008).')
 param entraValidateInApp bool = false
 @description('Canonical MCP URL (the RFC 8707 resource clients send) when the app is reached on a custom domain. Empty means https://<default host name>/runtime/webhooks/mcp, using the host name the platform injects.')
@@ -27,7 +29,10 @@ param entraResourceUri string = ''
 var entraEnabled = authMode == 'EntraBuiltIn'
 // Asking for the in-app check without Entra mode would silently do nothing: fail the deployment instead.
 var validateInApp = entraValidateInApp ? (entraEnabled ? true : fail('entraValidateInApp requires authMode EntraBuiltIn.')) : false
-var entraAllowedApps = filter(map(split(entraAllowedClientIds, ','), id => trim(id)), id => !empty(id))
+// The pipeline's application is one more allowed client; asking for it without Entra mode would silently do nothing, so fail instead.
+var pipelineApp = trim(entraPipelineClientId)
+var pipelineChecked = empty(pipelineApp) ? '' : (entraEnabled ? (length(pipelineApp) == 36 ? pipelineApp : fail('entraPipelineClientId must be a client ID (GUID).')) : fail('entraPipelineClientId requires authMode EntraBuiltIn.'))
+var entraAllowedApps = union(filter(map(split(entraAllowedClientIds, ','), id => trim(id)), id => !empty(id)), empty(pipelineChecked) ? [] : [ pipelineChecked ])
 var entraTenant = empty(entraTenantId) ? tenant().tenantId : entraTenantId
 // EntraBuiltIn makes the MCP webhook Anonymous; without App Service Authentication in front of it the endpoint would be open,
 // and without an allowed-application list any app in the tenant could obtain a token for it. Fail the deployment instead.
@@ -51,7 +56,8 @@ var entraInAppSettings = validateInApp ? concat([
   { name: 'Auth__Entra__ClientId', value: entraClientId }
   { name: 'Auth__Entra__AuthorityHost', value: entraAuthorityHost }
 ], map(range(0, length(entraAllowedApps)), i => { name: 'Auth__Entra__AllowedClientIds__${i}', value: entraAllowedApps[i] }),
-  empty(entraResourceUri) ? [] : [ { name: 'Auth__Entra__ResourceUri', value: entraResourceUri } ]) : []
+  empty(entraResourceUri) ? [] : [ { name: 'Auth__Entra__ResourceUri', value: entraResourceUri } ],
+  empty(pipelineChecked) ? [] : [ { name: 'Auth__Entra__AllowApplicationTokens', value: 'true' } ]) : []
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageAccountName }
 

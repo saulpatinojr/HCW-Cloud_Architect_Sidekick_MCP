@@ -44,7 +44,7 @@ App settings use `__` for `:`. Arrays use `__0`, `__1`. With the defaults the se
 | `Auth__Entra__AllowedClientIds__n` | none (required) | Client application IDs allowed as `azp` |
 | `Auth__Entra__Audiences__n` | none | Extra accepted `aud` values, for example `api://<client id>` for a v1 app |
 | `Auth__Entra__RequiredScopes__n` | `user_impersonation` | Scope values of which a delegated token must carry one. Must differ from every app role value |
-| `Auth__Entra__AllowApplicationTokens` | `false` | Accept tokens with no `scp` (client-credentials callers) that carry an app role |
+| `Auth__Entra__AllowApplicationTokens` | `false` | Accept tokens with no `scp` (client-credentials callers such as the deploy pipeline) that carry an app role. Bicep sets it when `ADR_ENTRA_PIPELINE_CLIENT_ID` is given. An application is **Reader at most**, whatever its roles map to (`EntraRoleMapper`) |
 | `Auth__Entra__AuthorityHost` | `login.microsoftonline.com` | Host name only. Sovereign clouds use their own |
 | `Auth__Entra__JwksUrl` | built from host and tenant | Key set address. `https` only (plain `http` only for loopback, for local tests) |
 | `Auth__Entra__ClockSkewSeconds` | `60` | 0 to 300 |
@@ -92,6 +92,31 @@ Search Application Insights with `traces | where message startswith "Bearer toke
 | `insufficient_scope`, `application_token_not_allowed` | Delegated token without `user_impersonation`, or an application token while `AllowApplicationTokens` is off |
 | `no_role` (sign-in check only; a tool call answers `FORBIDDEN`) | The user holds no ADR app role: assign one on the enterprise application |
 | `keys_unavailable` | The key set could not be fetched (network, firewall, Entra outage). Callers get 503 and should retry |
+
+## Pipeline access: an application role, read-only
+
+The owner decided on 2026-10-28 (docs/12, A4) that CI may call the server, and that it reads only. The pieces, all in this repository:
+
+- **One application role**, `Adr.Reader.Application` (`scripts/entra/app-roles.json`, `allowedMemberTypes: ["Application"]`), mapped to Reader in `Auth:AppRoleMap`. The four user roles stay users only, so no person can be given the pipeline role and no application can be given a user role.
+- **Reader at most, by rule.** `EntraRoleMapper` caps every application principal (a token with no delegated scope, on both the in-app path and the platform-principal path) at Reader, whatever its roles map to. So even a misassigned `Adr.Admin` on a service principal reads and nothing more: no analysis, no evidence upload, no change to any decision.
+- **No new credential.** The pipeline identity is the deploy job's own federated identity (`AZURE_CLIENT_ID`, OIDC, no secret). The repository variable `ADR_ENTRA_PIPELINE_READ=true` makes the job pass that ID as `ADR_ENTRA_PIPELINE_CLIENT_ID`; Bicep adds it to the allowed client IDs (edge and in-app alike) and, with `ADR_ENTRA_VALIDATE_IN_APP`, turns `Auth__Entra__AllowApplicationTokens` on. In `FunctionKey` mode the variable is refused by the preflight.
+- **What the job then does**: after the usual 401 check it gets a token for `api://<server client id>/.default` with `az account get-access-token` (masked), and runs `scripts/smoke-test.py --read-only`: `initialize`, `tools/list`, `adr_list`, `adr_search`, and `adr_create` **must** come back `FORBIDDEN`. A pipeline that could write fails the job.
+
+**Owner steps** (after Part F of the checklist, in the same terminal the runbook uses; report step numbers and status codes only):
+
+1. Add the role to the server app (re-applying the file keeps the four user roles and adds the fifth): `az ad app update --id $app --app-roles @scripts/entra/app-roles.json`. Expect no output; `az ad app show --id $app --query 'appRoles[].value' -o tsv` lists five values.
+2. Assign it to the pipeline's service principal (the enterprise application of `AZURE_CLIENT_ID`):
+   ```powershell
+   $pipelineSp = az ad sp list --filter "appId eq '<AZURE_CLIENT_ID>'" --query '[0].id' -o tsv
+   $role = (Get-Content scripts/entra/app-roles.json -Raw | ConvertFrom-Json | Where-Object { $_.value -eq 'Adr.Reader.Application' }).id
+   $body = New-TemporaryFile; (@{ principalId = $pipelineSp; resourceId = $sp; appRoleId = $role } | ConvertTo-Json -Compress) | Set-Content $body
+   az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" --headers 'Content-Type=application/json' --body "@$body"; Remove-Item $body
+   ```
+   Expect JSON for the assignment with `principalType: ServicePrincipal`.
+3. In GitHub, *Settings → Secrets and variables → Actions → Variables*: add `ADR_ENTRA_PIPELINE_READ` = `true` (repository level, next to `ADR_ENTRA_VALIDATE_IN_APP`). Nothing else: the job already holds the identity.
+4. Run the `ci-cd` workflow (*Actions → ci-cd → Run workflow*). Expect the deploy job's log to end with `OK adr_create refused with FORBIDDEN: the caller is read-only` and `SMOKE TEST PASSED (read-only)`. A `401` from the smoke test means the role assignment or the allow-list is missing; a `403` on `adr_list` means the assignment has not propagated yet (a few minutes) or went to the wrong service principal.
+
+To undo: set `ADR_ENTRA_PIPELINE_READ` to `false` (or delete it) and run the workflow once more; the next provision removes the ID from the allow-lists and the setting. Deleting the role assignment in Entra is optional after that.
 
 ## Owner-only first, group later
 
@@ -237,3 +262,4 @@ If any line differs from what is written, do not turn sign-in on for a client. O
 - The key cache is strict by design: once its lifetime ends and a refresh fails, calls get 503 until the key endpoint answers, even for key IDs that were cached. A bounded grace period is an owner decision.
 - A custom domain may be needed for the Application ID URI (step 2).
 - Rate limiting and per-client quotas are not part of this change (docs/04, section 5).
+- The pipeline's read-only access has been proven offline only (unit tests of the cap on both principal paths, the template snapshot, the workflow syntax); the first real run is step 4 of the pipeline section above.

@@ -117,6 +117,22 @@ public class TenantIsolationTests
     }
 
     [Fact]
+    public async Task Entra_mode_caps_an_application_principal_at_Reader_and_names_it_as_an_app()
+    {
+        // A client-credentials caller behind App Service Authentication: appid, no scp. Whatever role it claims, it reads and nothing more.
+        var host = EntraHost();
+        var pipeline = PrincipalHeader(("tid", EntraTenant), ("oid", "sp-object-id"), ("appid", "pipeline-app-id"), ("roles", "Adr.Admin"));
+        var list = await host.CallAsync("adr_list", new { }, pipeline);
+        Assert.True(list.GetProperty("ok").GetBoolean(), list.ToString());
+        Assert.Equal(ErrorCodes.Forbidden, ErrorCode(await host.CallAsync("adr_create", new { fields = new { title = "x", decision = "y" } }, pipeline)));
+        var reader = PrincipalHeader(("tid", EntraTenant), ("oid", "sp-object-id"), ("azp", "pipeline-app-id"), ("roles", "Adr.Reader.Application"));
+        Assert.True((await host.CallAsync("adr_list", new { }, reader)).GetProperty("ok").GetBoolean());
+        // A person (a delegated scope) with Author keeps Author.
+        var author = PrincipalHeader(("tid", EntraTenant), ("oid", "u-author"), ("azp", "client-app-id"), ("scp", "user_impersonation"), ("roles", "Adr.Author"));
+        Assert.True((await host.CallAsync("adr_create", new { fields = new { title = "x", decision = "y" } }, author)).GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
     public async Task Entra_mode_rejects_principal_header_when_platform_authentication_is_off()
     {
         // Without App Service Authentication in front, X-MS-CLIENT-PRINCIPAL is whatever the caller sent: never trust it.

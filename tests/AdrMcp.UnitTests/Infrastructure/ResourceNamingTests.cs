@@ -176,6 +176,26 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     }
 
     [BicepFact]
+    public async Task The_pipeline_identity_is_one_more_allowed_client_and_turns_application_tokens_on_only_with_the_in_app_check()
+    {
+        var snapshot = await _bicep.Get("entra-pipeline");
+        Assert.True(snapshot.Succeeded, snapshot.Output);
+        var site = snapshot.Resources.Single(r => r.Type == "Microsoft.Web/sites").Node;
+        var settings = site["properties"]!["siteConfig"]!["appSettings"]!.AsArray().ToDictionary(s => s!["name"]!.GetValue<string>(), s => s!["value"]!.GetValue<string>());
+        Assert.Equal("true", settings["Auth__Entra__AllowApplicationTokens"]);
+        var allowed = settings.Where(kv => kv.Key.StartsWith("Auth__Entra__AllowedClientIds__", StringComparison.Ordinal)).Select(kv => kv.Value).OrderBy(v => v, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "bbbbbbbb-cccc-dddd-eeee-ffffffffffff", "dddddddd-eeee-ffff-0000-111111111111" }, allowed);
+        // App Service Authentication gets the same list, so the edge and the app cannot disagree.
+        var auth = snapshot.Resources.Single(r => r.Type == "Microsoft.Web/sites/config" && r.Name.EndsWith("/authsettingsV2", StringComparison.Ordinal)).Node;
+        var edgeAllowed = auth["properties"]!["identityProviders"]!["azureActiveDirectory"]!["validation"]!["defaultAuthorizationPolicy"]!["allowedApplications"]!.AsArray().Select(a => a!.GetValue<string>()).OrderBy(v => v, StringComparer.Ordinal).ToArray();
+        Assert.Equal(allowed, edgeAllowed);
+
+        var refused = await _bicep.Get("reject:pipeline-without-entra");
+        Assert.False(refused.Succeeded, "entraPipelineClientId without EntraBuiltIn must stop the deployment.");
+        Assert.Contains("requires authMode EntraBuiltIn", refused.Output);
+    }
+
+    [BicepFact]
     public async Task The_suffix_goes_on_the_four_global_names_and_nowhere_else()
     {
         var snapshot = await _bicep.Get("suffix");
@@ -746,6 +766,8 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["reject:nameSuffix"] = Parameters("southcentralus", ("nameSuffix", Quote("b-")));
         scenarios["reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));   // kv-abcdefgh-dev-scus-01abcd = 27 characters
         scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("vault")));   // the vault server's workload
+        scenarios["entra-pipeline"] = Parameters("southcentralus", ("authMode", Quote("EntraBuiltIn")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")), ("entraValidateInApp", "true"), ("entraPipelineClientId", Quote("dddddddd-eeee-ffff-0000-111111111111")));   // the deploy identity may read (made-up ids)
+        scenarios["reject:pipeline-without-entra"] = Parameters("southcentralus", ("entraPipelineClientId", Quote("dddddddd-eeee-ffff-0000-111111111111")));   // FunctionKey mode has no application sign-in
         scenarios["reject:reserved-workload-prefix"] = Parameters("southcentralus", ("workloadName", Quote("vaultx")));   // the whole prefix is reserved, not one word
         scenarios["reject:reserved-workload-prefix-of-vault"] = InEnvironment("tdev", Parameters("southcentralus", ("workloadName", Quote("vaul")), ("environmentShort", Quote("tdev"))));   // vaul + tdev would spell stvaultdevscus01
 

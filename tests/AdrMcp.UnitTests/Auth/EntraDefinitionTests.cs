@@ -61,8 +61,32 @@ public class EntraDefinitionTests
         Assert.All(Json("scripts/entra/app-roles.json").AsArray(), r =>
         {
             Assert.True(r!["isEnabled"]!.GetValue<bool>());
-            Assert.Equal(new[] { "User" }, r["allowedMemberTypes"]!.AsArray().Select(m => m!.GetValue<string>()));   // owner-only first: no application can hold a role
+            var members = r["allowedMemberTypes"]!.AsArray().Select(m => m!.GetValue<string>()).ToArray();
+            // People hold the four user roles; only the pipeline role can be assigned to an application, and no role can be held by both.
+            Assert.Equal(r["value"]!.GetValue<string>() == AuthOptions.ApplicationReaderRole ? new[] { "Application" } : new[] { "User" }, members);
         });
+    }
+
+    [Fact]
+    public void The_one_application_role_maps_to_Reader_and_nothing_else_is_open_to_applications()
+    {
+        var roles = Json("scripts/entra/app-roles.json").AsArray();
+        var application = Assert.Single(roles, r => r!["allowedMemberTypes"]!.AsArray().Any(m => m!.GetValue<string>() == "Application"))!;
+        Assert.Equal(AuthOptions.ApplicationReaderRole, application["value"]!.GetValue<string>());
+        Assert.Equal("Reader", new AuthOptions().AppRoleMap[AuthOptions.ApplicationReaderRole]);   // docs/12 A4: the pipeline reads, nothing more
+        Assert.Contains("Adr.Reader.Application", Read("docs/11-entra-sign-in.md"));
+    }
+
+    [Fact]
+    public void The_pipeline_identity_is_opt_in_everywhere_and_defaults_to_off()
+    {
+        Assert.Contains("param entraPipelineClientId string = ''", Read("infra/main.bicep"));
+        Assert.Contains("param entraPipelineClientId string = ''", Read("infra/modules/functionapp.bicep"));
+        Assert.Contains("${ADR_ENTRA_PIPELINE_CLIENT_ID}", Read("infra/main.parameters.json"));
+        var workflow = Read(".github/workflows/ci-cd.yml");
+        Assert.Contains("vars.ADR_ENTRA_PIPELINE_READ == 'true' && vars.AZURE_CLIENT_ID || ''", workflow);   // the job's own identity, never a second credential
+        Assert.Contains("--read-only", workflow);
+        Assert.DoesNotContain("ADR_ENTRA_PIPELINE_CLIENT_SECRET", workflow);
     }
 
     [Fact]

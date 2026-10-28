@@ -44,6 +44,9 @@ param entraTenantId string = ''
 @description('Comma-separated client IDs of the applications allowed to call the server (for example your Claude Code public client and Claude connector app). Required when authMode is EntraBuiltIn.')
 param entraAllowedClientIds string = ''
 
+@description('EntraBuiltIn only: client ID of the application (the deploy pipeline\'s federated identity, AZURE_CLIENT_ID) that may read the server with no signed-in user. It is added to the allowed client IDs and, with entraValidateInApp, turns Auth__Entra__AllowApplicationTokens on; the app treats every application as Reader at most. Empty (default): no application may call. Set ADR_ENTRA_PIPELINE_CLIENT_ID; the deploy job sets it from AZURE_CLIENT_ID when the repository variable ADR_ENTRA_PIPELINE_READ is true (docs/11-entra-sign-in.md).')
+param entraPipelineClientId string = ''
+
 @description('EntraBuiltIn only: also verify the bearer token inside the app, in addition to App Service Authentication (ADR-0008, docs/11-entra-sign-in.md). Off by default; turn it on only after the real-tenant runbook passes.')
 param entraValidateInApp bool = false
 
@@ -247,6 +250,7 @@ module functionApp './modules/functionapp.bicep' = {
     entraClientId: entraClientId
     entraTenantId: entraTenantId
     entraAllowedClientIds: entraAllowedClientIds
+    entraPipelineClientId: entraPipelineClientId
     entraValidateInApp: entraValidateInApp
     entraResourceUri: entraResourceUri
     vnetIntegrationSubnetId: enablePrivateNetworking ? network.?outputs.appSubnetId ?? '' : ''

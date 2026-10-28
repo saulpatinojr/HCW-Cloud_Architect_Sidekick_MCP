@@ -46,6 +46,11 @@
 │   ├── postprovision.sh               # azd hook: Key Vault salt secret
 │   ├── setup-adr-deploy.ps1           # one-step deploy setup: OIDC identity, protected environment, repository variables (docs/07)
 │   └── package.sh                     # zips the deliverable
+├── src/VaultMcp/                      # Obsidian vault MCP server (ADR-0010): its own VaultMcp.sln, never referenced by AdrMcp.sln
+│   ├── VaultMcp.Core/                 # allow-list (adr-sidekick.md), note parser, the four read-only operations
+│   ├── VaultMcp.Stdio/                # local host for Claude Code and Claude Desktop (stdio)
+│   ├── VaultMcp.Tests/                # xunit, throw-away vault on disk
+│   └── README.md · smoke-test.py      # set-up for each client; protocol-level check of the tool list
 ├── tools/AdrMcp.DocGen/               # generates docs/03-mcp-contracts.md from code
 ├── tools/AdrMcp.Import/               # scan and load existing ADR Markdown files (docs/10-legacy-adr-import.md)
 ├── src/

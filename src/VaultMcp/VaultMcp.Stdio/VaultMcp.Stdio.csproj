@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Local host for Claude Code and Claude Desktop: speaks MCP over stdin/stdout, reads the vault folder (ADR-0010 phase 1). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>VaultMcp.Stdio</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VaultMcp.Core\VaultMcp.Core.csproj" />
+  </ItemGroup>
+</Project>

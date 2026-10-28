@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Obsidian vault reader (ADR-0010): the allow-list, the note parser and the four read-only operations.
+       No reference to any AdrMcp project, by design: the vault server stands alone. -->
+  <PropertyGroup>
+    <RootNamespace>VaultMcp.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="VaultMcp.Tests" />
+  </ItemGroup>
+</Project>

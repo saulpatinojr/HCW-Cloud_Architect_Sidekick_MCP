@@ -1,0 +1,49 @@
+name: vault-mcp
+
+# The Obsidian vault MCP server (src/VaultMcp, ADR-0010) has its own solution that AdrMcp.sln never references,
+# so it gets its own small check. It never deploys anything.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/VaultMcp/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/vault-mcp.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/VaultMcp/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/vault-mcp.yml'
+
+permissions: {}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test:
+    name: Build and test the vault server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with: { global-json-file: global.json }
+
+      - name: Restore (NuGet Audit fails on known vulnerabilities, direct and transitive)
+        run: dotnet restore src/VaultMcp/VaultMcp.sln
+
+      - name: Build (Release, warnings as errors for nullable)
+        run: dotnet build src/VaultMcp/VaultMcp.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test src/VaultMcp/VaultMcp.sln -c Release --no-build --logger "console;verbosity=normal"

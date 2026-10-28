@@ -129,7 +129,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           # Paths that never reach Azure. Every other path deploys, including paths added later (fail safe), and so does
           # a change to this workflow, so the deploy job's own steps are exercised.
-          NOT_DEPLOYED: '^(docs|tests|samples|tools|\.vscode|\.claude|\.github)/|\.md$|^(LICENSE|\.gitignore|\.gitattributes|\.mcp\.json)$'
+          NOT_DEPLOYED: '^(docs|tests|samples|tools|src/VaultMcp|\.vscode|\.claude|\.github)/|\.md$|^(LICENSE|\.gitignore|\.gitattributes|\.mcp\.json)$'
         run: |
           deploy=true
           # Without the previous main commit (first push, force push) the change set is unknown: deploy.

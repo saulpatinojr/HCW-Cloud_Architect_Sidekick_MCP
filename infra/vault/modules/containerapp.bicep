@@ -1,10 +1,10 @@
 // The vault server (VaultMcp.Http) as one Container App, external HTTPS ingress on port 8080, the file share mounted read-only at
 // /vault, one replica. The image is set by `azd deploy` (src/VaultMcp/azure.yaml); this template never changes it once set.
 //
-// First `azd provision`: no image exists yet, so the app starts with Microsoft's quickstart placeholder. Every later provision reads
-// the image the app already runs (the `exists` pattern azd documents for Container Apps) and keeps it. The HTTP health probes are
-// declared only once the real image is in place: the placeholder listens on port 80 and has no /health, so probes against it would
-// mark the revision unhealthy. Until then the platform's default TCP probes on the target port apply.
+// First `azd provision`: no image exists yet, so the app starts with Microsoft's ASP.NET Core sample image, which listens on the
+// same port 8080, under TCP probes on that port, so the placeholder revision is healthy. `azd deploy` then swaps in the real image,
+// which keeps working under the same TCP probes. Every later provision reads the image the app already runs (`exists`, fed by azd's
+// SERVICE_VAULT_RESOURCE_EXISTS) and keeps it, and switches to the HTTP probes on /health, which the sample image does not have.
 param name string
 param location string
 param tags object
@@ -13,7 +13,7 @@ param identityId string
 param registryLoginServer string
 @description('true when a container app of this name already exists in the resource group (azd sets SERVICE_VAULT_RESOURCE_EXISTS); its current image is then kept.')
 param exists bool
-param placeholderImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param placeholderImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp' // listens on 8080 like VaultMcp.Http
 param containerName string = 'vault'
 param targetPort int = 8080
 param storageDefinitionName string
@@ -51,6 +51,13 @@ var healthProbes = [
   }
 ]
 
+// For the placeholder (and, until the next provision, for the real image it is swapped for): reachable on the target port.
+var tcpProbes = [
+  { type: 'Startup', tcpSocket: { port: targetPort }, initialDelaySeconds: 2, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 30 }
+  { type: 'Liveness', tcpSocket: { port: targetPort }, initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+  { type: 'Readiness', tcpSocket: { port: targetPort }, initialDelaySeconds: 3, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
+]
+
 resource app 'Microsoft.App/containerApps@2025-07-01' = {
   name: name
   location: location
@@ -78,7 +85,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
           // (401 on /mcp) until the sign-in layer of step 3 exists. Anonymous would be refused here anyway (CONTAINER_APP_NAME).
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           volumeMounts: [ { volumeName: 'vault', mountPath: mountPath } ]
-          probes: isPlaceholder ? [] : healthProbes
+          probes: isPlaceholder ? tcpProbes : healthProbes
         }
       ]
       scale: { minReplicas: 1, maxReplicas: 1 } // one synced copy, one reader; the Sync sidecar of step 2 needs an always-on replica

@@ -46,7 +46,7 @@ param shareAuth string = 'ManagedIdentity'
 @maxValue(100)
 param shareQuotaGiB int = 5
 
-@description('Principal id (object id) of the person running azd, so they can put the step 2 secrets into Key Vault. Leave empty in production.')
+@description('Opt-in: principal id (object id) of the person who will put the step 2 secrets into Key Vault (Key Vault Secrets Officer). Set VAULT_DEPLOYER_PRINCIPAL_ID yourself; it is deliberately not AZURE_PRINCIPAL_ID, which azd fills in on every provision, so nobody gets the role by accident.')
 param deployerPrincipalId string = ''
 
 // ---- Naming (ADR-0009) --------------------------------------------------------------------------------------------------
@@ -74,6 +74,8 @@ var nameProblem = empty(regionCode)
   ? 'Region "${location}" has no short code. Add it to infra/region-codes.json and to the region table in docs/adr/ADR-0009-azure-naming-convention.md, then deploy again.'
   : !(isLowerAlphanumeric(workloadName) && isLowerAlphanumeric(environmentShort) && isLowerAlphanumeric(nameSuffix))
     ? 'workloadName, environmentShort and nameSuffix may hold lower-case letters and digits only (ADR-0009).'
+    : workloadName == 'adr'
+      ? 'workloadName "adr" belongs to the ADR server (infra/main.bicep): the vault would get the ADR server\'s resource names and change its resources. Choose another VAULT_WORKLOAD_NAME.'
     : !(environmentName == environmentShort || endsWith(environmentName, '-${environmentShort}'))
       ? 'environmentName "${environmentName}" must end with "-${environmentShort}". The azd environment name is not part of any resource name, so two azd environments in one subscription and region with the same environmentShort would get the same names and overwrite each other. Name the azd environment vault-<short> (for example vault-prod) and set VAULT_ENVIRONMENT_SHORT to <short> for it (ADR-0009).'
       : length(keyVaultName) > 24

@@ -107,6 +107,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Equal("${VAULT_ENVIRONMENT_SHORT=dev}", parameters["environmentShort"]!["value"]!.GetValue<string>());
         Assert.Equal("${VAULT_NAME_SUFFIX}", parameters["nameSuffix"]!["value"]!.GetValue<string>());
         Assert.Equal("${SERVICE_VAULT_RESOURCE_EXISTS=false}", parameters["vaultExists"]!["value"]!.GetValue<string>());   // azd sets it; the deployed image is kept
+        Assert.Equal("${VAULT_DEPLOYER_PRINCIPAL_ID}", parameters["deployerPrincipalId"]!["value"]!.GetValue<string>());   // opt-in, never azd's own AZURE_PRINCIPAL_ID
 
         var bicep = File.ReadAllText(Path.Join(Root, "infra/vault/main.bicep"));
         Assert.Contains("param workloadName string = 'vault'", bicep);
@@ -286,9 +287,12 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var registry = snapshot.Resources.Single(r => r.Type == "Microsoft.ContainerRegistry/registries").Node["properties"]!;
         Assert.False(registry["adminUserEnabled"]!.GetValue<bool>());
 
-        // First provision: no image yet, so the placeholder runs without the HTTP probes (it has no /health); the platform defaults apply.
+        // First provision: no image yet, so Microsoft's sample image runs on the same port under TCP probes (it has no /health).
         Assert.StartsWith("mcr.microsoft.com/", container["image"]!.GetValue<string>());
-        Assert.Empty(container["probes"]!.AsArray());
+        var probes = container["probes"]!.AsArray();
+        Assert.Equal(new[] { "Liveness", "Readiness", "Startup" }, probes.Select(p => p!["type"]!.GetValue<string>()).OrderBy(t => t, StringComparer.Ordinal));
+        Assert.All(probes, p => Assert.Equal(8080, p!["tcpSocket"]!["port"]!.GetValue<int>()));
+        Assert.All(probes, p => Assert.Null(p!["httpGet"]));
     }
 
     [BicepFact]
@@ -345,6 +349,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("location", "has no short code")]
     [InlineData("environmentName", "must end with")]
     [InlineData("keyvault-length", "longer than the 24 characters")]
+    [InlineData("reserved-workload", "belongs to the ADR server")]
     public async Task A_vault_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"vault:reject:{parameter}");
@@ -370,6 +375,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("workloadName", "lower-case letters and digits only")]
     [InlineData("environmentShort", "lower-case letters and digits only")]
     [InlineData("nameSuffix", "lower-case letters and digits only")]
+    [InlineData("reserved-workload", "belongs to the Obsidian vault server")]
     public async Task A_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"reject:{parameter}");
@@ -663,6 +669,7 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["reject:environmentShort"] = Parameters("southcentralus", ("environmentShort", Quote("de_v")));
         scenarios["reject:nameSuffix"] = Parameters("southcentralus", ("nameSuffix", Quote("b-")));
         scenarios["reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));   // kv-abcdefgh-dev-scus-01abcd = 27 characters
+        scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("vault")));   // the vault server's workload
 
         // The vault server's template (ADR-0010): the same guards, its own names. Its defaults are workloadName 'vault' and environmentShort 'dev'.
         foreach (var region in regions) scenarios[$"vault:region:{region}"] = Parameters(region);
@@ -672,6 +679,7 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["vault:reject:location"] = Parameters("brazilsouth");
         scenarios["vault:reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));
         scenarios["vault:reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));
+        scenarios["vault:reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("adr")));   // would take the ADR server's names
 
         return scenarios.ToDictionary(s => s.Key, s => Task.Run(() => RunAsync(s.Key.StartsWith("vault:", StringComparison.Ordinal) ? VaultTemplate : AdrTemplate, s.Value)));
     }

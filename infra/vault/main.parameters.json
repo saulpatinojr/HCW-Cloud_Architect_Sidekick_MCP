@@ -10,6 +10,6 @@
     "vaultExists": { "value": "${SERVICE_VAULT_RESOURCE_EXISTS=false}" },
     "shareAuth": { "value": "${VAULT_SHARE_AUTH=ManagedIdentity}" },
     "shareQuotaGiB": { "value": "${VAULT_SHARE_QUOTA_GIB=5}" },
-    "deployerPrincipalId": { "value": "${AZURE_PRINCIPAL_ID}" }
+    "deployerPrincipalId": { "value": "${VAULT_DEPLOYER_PRINCIPAL_ID}" }
   }
 }

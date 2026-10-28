@@ -102,6 +102,8 @@ var nameProblem = empty(regionCode)
   ? 'Region "${location}" has no short code. Add it to infra/region-codes.json and to the region table in docs/adr/ADR-0009-azure-naming-convention.md, then deploy again.'
   : !(isLowerAlphanumeric(workloadName) && isLowerAlphanumeric(environmentShort) && isLowerAlphanumeric(nameSuffix))
     ? 'workloadName, environmentShort and nameSuffix may hold lower-case letters and digits only (ADR-0009).'
+    : workloadName == 'vault'
+      ? 'workloadName "vault" belongs to the Obsidian vault server (infra/vault/main.bicep): this deployment would take over its resource names. Choose another ADR_WORKLOAD_NAME.'
     : !(environmentName == environmentShort || endsWith(environmentName, '-${environmentShort}'))
       ? 'environmentName "${environmentName}" must end with "-${environmentShort}". The azd environment name is not part of any resource name, so two azd environments in one subscription and region with the same environmentShort would get the same names and overwrite each other. Name the azd environment adr-<short> (for example adr-prod) and set ADR_ENVIRONMENT_SHORT to <short> for it (ADR-0009).'
       : length(keyVaultName) > 24

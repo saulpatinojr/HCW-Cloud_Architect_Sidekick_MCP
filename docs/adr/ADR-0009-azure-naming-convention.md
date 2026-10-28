@@ -120,7 +120,7 @@ The Obsidian vault MCP server ([ADR-0010](ADR-0010-obsidian-second-brain.md)) is
 - **Workload** `vault`, so `rg-vault-dev-scus-01`; the tag `application` is `vault-mcp` (the application the workload serves; `adr-mcp` stays on the ADR server's resources). The `component` values are the same five.
 - **Abbreviations** added from Microsoft's list: `ca` (container app), `cae` (Container Apps environment), `cr` (container registry). A registry name allows letters and digits only, so it has no hyphens: `crvaultdevscus01`.
 - **Global names** in this template: the container registry, the Key Vault and the storage account take `nameSuffix` (`VAULT_NAME_SUFFIX`). The container app's host name is `<app name>.<environment's unique domain>.<region>.azurecontainerapps.io`, so the app name is unique per environment, not across Azure, and takes no suffix.
-- **Parameters:** `VAULT_WORKLOAD_NAME` (default `vault`), `VAULT_ENVIRONMENT_SHORT` (default `dev`), `VAULT_NAME_SUFFIX`. The azd environment name must end with `-<environmentShort>` (`vault-dev`), as for the ADR server, and the same stop-before-creating checks apply.
+- **Parameters:** `VAULT_WORKLOAD_NAME` (default `vault`), `VAULT_ENVIRONMENT_SHORT` (default `dev`), `VAULT_NAME_SUFFIX`. The azd environment name must end with `-<environmentShort>` (`vault-dev`), as for the ADR server, and the same stop-before-creating checks apply. In addition each template refuses the other's workload name (`adr` in the vault template, `vault` in the ADR template), because the same workload, environment and region would give the same resource group and global names, and one deployment would change the other's resources.
 - **Data names** (decision 8): the file share and the environment's storage definition are both `vault`; the diagnostic setting is `log-analytics`.
 - `ResourceNamingTests` evaluates this template too, for every region, with the rules below, and checks that the two workloads share no name in one subscription and region. "Build every name in the entry template" now means `infra/main.bicep` or `infra/vault/main.bicep`; modules still build none.
 
@@ -128,7 +128,7 @@ The Obsidian vault MCP server ([ADR-0010](ADR-0010-obsidian-second-brain.md)) is
 |---|---|---|---|---|---|---|
 | Resource group | `rg-vault-dev-scus-01` | 20 | 1-90 | as above | subscription | pass |
 | Container app | `ca-vault-dev-scus-01` | 20 | 2-32 | lower-case letters, digits, hyphens; start with a letter, end with a letter or digit | resource group | pass |
-| Container Apps environment | `cae-vault-dev-scus-01` | 21 | not listed on the Learn page (read 2026-10-28); the test applies the container app rule | resource group | pass |
+| Container Apps environment | `cae-vault-dev-scus-01` | 21 | not listed on the Learn page (read 2026-10-28); the test applies the container app rule | lower-case letters, digits, hyphens; start with a letter, end with a letter or digit | resource group | pass |
 | Container registry | `crvaultdevscus01` | 16 | 5-50 | letters and digits only | **global** | pass |
 | Key Vault | `kv-vault-dev-scus-01` | 20 | 3-24 | as above | **global** | pass |
 | Storage account | `stvaultdevscus01` | 16 | 3-24 | lower-case letters and digits only | **global** | pass |

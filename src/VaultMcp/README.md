@@ -126,10 +126,10 @@ No key, connection string or secret appears in the template or its outputs: the 
 
 1. Open a terminal in `src/VaultMcp` (the ADR server's azd project is at the repository root; do not mix the two).
 2. Run `azd auth login`, then `azd env new vault-dev`. The name must end with `-dev`, the environment part of every resource name. You should see `.azure/vault-dev/` appear (it is git-ignored).
-3. Run `azd env set AZURE_LOCATION southcentralus` (or another region in `infra/region-codes.json`), then `azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"` so that you may put the step 2 secrets into Key Vault later (skip it in production).
-4. Run `azd provision`. Expect 5 to 10 minutes and, at the end, a list of outputs that includes `VAULT_MCP_ENDPOINT`. The app runs Microsoft's quickstart placeholder image until the next step. If it stops at the file share link with an authorization error, wait a minute and run it again: a new role assignment can take that long to apply.
+3. Run `azd env set AZURE_LOCATION southcentralus` (or another region in `infra/region-codes.json`). Optional, for step 2: `azd env set VAULT_DEPLOYER_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"` gives you Key Vault Secrets Officer on the new vault, so you can put the Sync secrets there later. It is a separate, opt-in variable on purpose (azd fills `AZURE_PRINCIPAL_ID` on every provision; nobody should get that role by accident). Leave it unset in production.
+4. Run `azd provision`. Expect 5 to 10 minutes and, at the end, a list of outputs that includes `VAULT_MCP_ENDPOINT`. The app runs Microsoft's ASP.NET Core sample image as a placeholder until the next step (it listens on the same port 8080, so the revision is healthy). If it stops at the file share link with an authorization error, wait a minute and run it again: a new role assignment can take that long to apply.
 5. Run `azd deploy vault`. Expect lines about building the image in the registry, then `Deploying service vault` and the endpoint. The placeholder is replaced by the vault server.
-6. Run `azd provision` once more. Now that the real image runs, this turns on the `/health` probes; the template keeps the image you deployed (the `exists` pattern azd documents for Container Apps). Until then the platform's default TCP probes apply.
+6. Recommended: run `azd provision` once more. The first provision could only declare TCP probes (the placeholder has no `/health`); this one switches to HTTP probes on `GET /health`. It keeps the image you deployed: azd sets `SERVICE_VAULT_RESOURCE_EXISTS=true` once the app exists, `main.parameters.json` passes it as `vaultExists`, and the template then reads the running image instead of the placeholder.
 7. Check: `curl -i "$(azd env get-value VAULT_HEALTH_URL)"` answers `200` with `{"status":"ok","mode":"Locked","settingsNote":false}` (`settingsNote` turns true once step 2 syncs `adr-sidekick.md` into the share), and `curl -i "$(azd env get-value VAULT_MCP_ENDPOINT)"` answers `401` with a `WWW-Authenticate: Bearer` header. Nothing is readable yet, by design.
 
 Settings (`azd env set NAME VALUE`, all optional):
@@ -140,6 +140,7 @@ Settings (`azd env set NAME VALUE`, all optional):
 | `VAULT_NAME_SUFFIX` | empty | appended to the three globally unique names (registry, Key Vault, storage account) when one is taken, for example a Key Vault still soft-deleted |
 | `VAULT_SHARE_AUTH` | `ManagedIdentity` | `AccountKey` only as the fallback described above |
 | `VAULT_SHARE_QUOTA_GIB` | `5` | size limit of the share |
+| `VAULT_DEPLOYER_PRINCIPAL_ID` | empty | object id of the person who may write the step 2 secrets (Key Vault Secrets Officer); opt-in |
 
 To undo: `azd down` from the same folder deletes the resource group. The Key Vault keeps its name reserved for 90 days (purge protection, as for the ADR server); set `VAULT_NAME_SUFFIX` if you create the environment again within that time. Preview first with `azd provision --preview`.
 

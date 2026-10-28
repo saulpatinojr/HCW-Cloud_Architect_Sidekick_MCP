@@ -108,7 +108,7 @@ From the research in issue #27 (vendor documents read on 2026-10-17, not re-veri
 | Antigravity, Perplexity | one **confidential client** app you create; its secret goes only in Key Vault | `https://antigravity.google/oauth-callback`, `https://www.perplexity.ai/rest/connections/oauth_callback` |
 | Copilot cloud agent | not supported (no OAuth with a pre-registered client; owner decision on the issue) | none |
 
-Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized on the server app's `user_impersonation` scope. Never put a client secret in a chat, an issue, this repository or an app setting; the confidential client's secret belongs in Key Vault, and its expiry needs tracking.
+Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized on the server app's `user_impersonation` scope. The Obsidian vault server (ADR-0010) reuses these client registrations and pre-authorizes them on its own scope; the `az` commands that create the public client are in the [vault server README](../src/VaultMcp/README.md#connect-the-clients-phase-2-step-4). Never put a client secret in a chat, an issue, this repository or an app setting; the confidential client's secret belongs in Key Vault, and its expiry needs tracking.
 
 ## What is verified, and what is NOT
 

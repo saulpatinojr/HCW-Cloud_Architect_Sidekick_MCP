@@ -239,7 +239,7 @@ What a client sees (the MCP authorization spec, revision 2026-07-28; the same ta
    unset VAULT_MCP_TOKEN
    ```
    Expect `OK initialize`, `OK tools/list` and `ALL OK`. A `403` with `insufficient_scope` means the token was not for this scope (sign in again with the `--scope` line); a `403` with no `WWW-Authenticate` means your user has no `Vault.Reader` assignment (step 2); a `401` with `invalid_token` means the token is for another tenant, client or server (steps 1 and 4).
-7. Clients: connecting Claude Code, Claude Desktop, Claude.ai and the phone to `VAULT_MCP_ENDPOINT` is the next step of phase 2 and follows [docs/06](../../docs/06-claude-connection.md) once Part F of the checklist has settled which client registration each one uses. Nothing in this step connects a client.
+7. Clients: connecting Claude Code, Claude Desktop, Claude.ai and the phone is [step 4](#connect-the-clients-phase-2-step-4). Nothing in this step connects a client.
 
 Step 3 settings (`azd env set NAME VALUE`):
 
@@ -256,6 +256,61 @@ To undo: `azd env set VAULT_AUTH_MODE Locked` and `azd provision` puts the serve
 
 **Not verified yet** (needs a tenant): the whole flow against real Entra tokens (the unit tests prove every row of the table with a key set made in the test), that Claude's connector and the phone accept this host's challenge and metadata (checklist F3), and the `CONTAINER_APP_HOSTNAME` fallback for the resource URI (the template passes the address explicitly, so nothing relies on it).
 
+## Connect the clients (phase 2, step 4)
+
+This is the step the whole of phase 2 exists for: the Claude app on your phone, Claude.ai in a browser, Claude Desktop and Claude Code call the vault server in Azure as you. Every one of them signs in with Microsoft Entra ID through the same OAuth flow: the client calls `/mcp` without a token, gets the 401 challenge from step 3, reads the metadata document, sends you to Entra to sign in (and to consent once), and then calls with an access token for the vault server. Entra has no self-registration for clients (no Dynamic Client Registration, no Client ID Metadata Document), so Claude must identify itself with a **client app you register once**: a *public client* (no secret), used by Claude Code on your machine and, if Entra and Claude agree, by the hosted Claude apps too. The hosted apps (claude.ai, Desktop, the phone, Cowork) share one connector on your Claude account and connect from Anthropic's servers, not from your device; Claude Code connects from your machine. Facts from Anthropic's pages [Add a connector that isn't in the directory](https://claude.com/docs/connectors/custom/add-unlisted), [Authentication for connectors](https://claude.com/docs/connectors/building/authentication) and [MCP in Claude Code](https://code.claude.com/docs/en/mcp), read 2026-10-28; the ADR server's version of this is [docs/06](../../docs/06-claude-connection.md).
+
+**You need:** step 3 done (sign-in on, the two checks passed); the Azure CLI signed in to the tenant with permission to create app registrations; Claude Code 2.1.231 or newer (older builds send a `127.0.0.1` callback); for the phone, Claude.ai and Desktop, a Claude plan that allows custom connectors (Free allows one). The client registration below is the same public client the ADR server's checklist plans in [docs/12](../../docs/12-entra-sign-in-checklist.md) (A3, Part F): create it once and both servers use it; only each server's scope is new to it. Report step numbers and status codes only; never an ID, a token or a secret.
+
+1. Register the public client once (skip the `create` if Part F already made it; then only add the redirect URIs with `az ad app update --id "$client" --public-client-redirect-uris <the existing ones and these>`, because the update replaces the list). Two redirect URIs: Claude Code's local callback on a fixed port, and the hosted Claude apps' callback:
+   ```bash
+   client=$(az ad app create --display-name 'MCP clients (public)' --sign-in-audience AzureADMyOrg --is-fallback-public-client true \
+     --public-client-redirect-uris http://localhost:8976/callback https://claude.ai/api/mcp/auth_callback --query appId -o tsv)
+   az ad app show --id "$client" --query 'publicClient.redirectUris' -o tsv
+   ```
+   Expect the two addresses printed. No secret is created: a public client proves nothing about itself, which is why the server checks the user's role, not the client.
+2. Pre-authorize it on the vault scope, so Entra does not ask you for consent on every device. The list is replaced as a whole: keep the Azure CLI entry from step 3 of the sign-in section only while you still want the smoke test from your terminal (`$app` and `$obj` are the vault server's ids from that section; read them back with `az ad app list --display-name 'Obsidian vault MCP server' --query '[0].[appId,id]' -o tsv` if the terminal is gone):
+   ```bash
+   scope=$(python3 -c "import json; print(json.load(open('scripts/entra/vault-oauth2-permission-scopes.json'))['api']['oauth2PermissionScopes'][0]['id'])")
+   az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$obj" --headers 'Content-Type=application/json' \
+     --body "{\"api\":{\"preAuthorizedApplications\":[{\"appId\":\"$client\",\"delegatedPermissionIds\":[\"$scope\"]},{\"appId\":\"04b07795-8ddb-461a-bbee-02f9e1bf7b46\",\"delegatedPermissionIds\":[\"$scope\"]}]}}"
+   ```
+   Expect no output (Graph answers 204).
+3. Register the MCP address on the vault server's app. Claude asks Entra for a token with the server's exact URL as the OAuth *resource* (RFC 8707), and Entra issues one only if that URL is an Application ID URI of the app; otherwise sign-in fails with `AADSTS9010010`. Keep `api://<client id>` as well:
+   ```bash
+   endpoint=$(cd src/VaultMcp && azd env get-value VAULT_MCP_ENDPOINT)
+   az ad app update --id "$app" --identifier-uris "api://$app" "$endpoint"; echo "exit $?"
+   ```
+   Expect `exit 0` (PASS). An error that mentions a verified domain is a FAIL: the tenant's policy only accepts `https://` identifier URIs on a domain the tenant has verified, and `azurecontainerapps.io` is Microsoft's. Apps that request v2.0 tokens (this one does) are exempt from the policy by default ([Restrictions on identifier URIs](https://learn.microsoft.com/entra/identity-platform/identifier-uri-restrictions)), so expect PASS; if it fails anyway, the fix is a custom domain on the container app under a domain your tenant has verified, which is a template change (ingress `customDomains` and a managed certificate) the maintainer adds on request. Report PASS or FAIL only.
+4. Allow the client at the server. In `src/VaultMcp`: `azd env set VAULT_ENTRA_ALLOWED_CLIENT_IDS "<public client id>,04b07795-8ddb-461a-bbee-02f9e1bf7b46"` (drop the second id once you no longer need the terminal smoke test), then `azd provision`. Expect a new healthy revision; `curl -s "$(azd env get-value VAULT_HEALTH_URL)"` still answers `"mode":"Entra"`.
+5. **Claude Code** (any terminal, from the repository root):
+   ```bash
+   claude mcp add --transport http --client-id "$client" --callback-port 8976 vault "$(cd src/VaultMcp && azd env get-value VAULT_MCP_ENDPOINT)"
+   claude mcp login vault
+   ```
+   Your browser opens on Entra; sign in (with MFA if the tenant asks) and accept the one-time consent for *Access the Obsidian vault MCP server as you*. Expect `claude mcp get vault` to show the server with OAuth configured, and `/mcp` inside a session to list `vault` as connected with the four tools. The phase 1 stdio entry (`vault` over `dotnet`) and this one cannot share a name; keep one, or name this one `vault-azure`. The same thing as a committed project file (`.mcp.json`, no secret in it):
+   ```json
+   { "mcpServers": { "vault": { "type": "http", "url": "https://<app fqdn>/mcp", "oauth": { "clientId": "<public client id>", "callbackPort": 8976 } } } }
+   ```
+6. **Claude.ai, Claude Desktop and the phone** (one connector on your account, shown on every device): in claude.ai go to *Customize → Connectors → Add custom connector*. Name `vault`; MCP server URL = `VAULT_MCP_ENDPOINT`; Authentication *Sign in now*; OAuth client *Use your own OAuth client* with the public client's ID and the secret left blank (Anthropic: "Leave the secret blank unless your authorization server requires one"); add, then *Connect*. Expect the Entra sign-in, then the connector listed as connected. In a chat, press **+** → *Connectors* and turn `vault` on; ask for something from an allow-listed note. Expect a `vault_search` call and an excerpt. Open the Claude app on the phone: the same connector is there; turn it on in a chat the same way. If Entra or Claude refuses the public client here (checklist F3 decides), create a confidential client instead: `az ad app create --display-name 'MCP clients (confidential)' --sign-in-audience AzureADMyOrg --web-redirect-uris https://claude.ai/api/mcp/auth_callback`, give it a secret with `az ad app credential reset --id <its id> --years 1 --query password -o tsv` typed straight into the connector dialog's secret field (and into Key Vault if you want a record; never into chat, an issue or this repository), then repeat steps 2 and 4 for its ID.
+7. Record the result. This is gate 6 of [ADR-0010](../../docs/adr/ADR-0010-obsidian-second-brain.md) ("an unauthenticated call gets 401; the phone signs in and lists the four tools"): tell the maintainer which client worked and which did not, as step numbers and status codes, so [docs/06](../../docs/06-claude-connection.md), [docs/11](../../docs/11-entra-sign-in.md) and the checklist get the same answer.
+
+What can go wrong, and what it means:
+
+| You see | It means |
+|---|---|
+| `AADSTS9010010` during sign-in | step 3 of this section is missing or failed: the MCP URL is not an Application ID URI of the vault server app |
+| `AADSTS65001` or a consent screen on every device | the client is not pre-authorized on the vault scope (step 2); consenting once is also fine |
+| `AADSTS50011` (redirect URI mismatch) | the client's redirect URIs do not hold the callback Claude used (step 1); for Claude Code the port must be 8976 on both sides |
+| Claude says "Couldn't reach the MCP server" | the 401 challenge or the metadata document is not reachable from Anthropic's network: `curl -si -X POST ... /mcp` and `curl .../.well-known/oauth-protected-resource/mcp` from anywhere on the internet must answer as in step 3 of the sign-in section |
+| sign-in works, then `401 invalid_token` | the token is for another tenant, client or server: the client ID is missing from `VAULT_ENTRA_ALLOWED_CLIENT_IDS` (step 4), or the connector points at a different URL than the resource URI |
+| sign-in works, then `403` with no challenge | your user has no `Vault.Reader` assignment (sign-in section, step 2) |
+| sign-in works, `403 insufficient_scope` | the token lacks the vault scope: the client requested another scope; re-add the connector so it reads the scope from the challenge again |
+
+To undo: `claude mcp remove vault`; in claude.ai *Customize → Connectors → vault → Remove* (the phone follows); `az ad app delete --id "$client"` removes the client registration for both servers, so prefer removing only its pre-authorization and its entry in `VAULT_ENTRA_ALLOWED_CLIENT_IDS`.
+
+**Not verified yet** (needs a tenant and the apps): every step above. In particular: that Entra accepts the `azurecontainerapps.io` address as an identifier URI (step 3; the v2.0 exemption says it should), that the hosted Claude apps complete the flow with an Entra public client (checklist F3), and that Claude accepts Entra's discovery metadata as it is (Claude requires PKCE S256, which Entra supports; whether Claude also insists on Entra advertising `code_challenge_methods_supported` is not known from its pages).
+
 ## Tests
 
 ```bash
@@ -270,6 +325,6 @@ The unit tests run against a throw-away vault on disk and cover: nothing readabl
 
 ## Not yet
 
-- A run of the step 3 sign-in against a real tenant, and the clients (Claude Code, Claude Desktop, Claude.ai, the phone) connected to the Azure address (step 4 of phase 2, after checklist Part F).
+- A run of steps 3 and 4 against a real tenant and the real apps: the sign-in, and Claude Code, Claude Desktop, Claude.ai and the phone connected to the Azure address (ADR-0010 gate 6). The steps are written; nothing has been clicked.
 - A proven run of the step 2 sync container against a real Obsidian account (the beta client cannot run in CI).
 - Uploading notes to the ADR server as evidence (level B in ADR-0010).

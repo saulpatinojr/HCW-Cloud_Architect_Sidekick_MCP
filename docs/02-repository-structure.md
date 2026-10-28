@@ -35,7 +35,7 @@
 │   ├── main.bicep · main.parameters.json · abbreviations.json · region-codes.json   # ADR server; names are built in main.bicep (ADR-0009)
 │   ├── modules/{identity,monitoring,network,storage,cosmos,keyvault,functionapp,rbac,private-endpoint}.bicep   # identity and keyvault are shared with the vault template
 │   └── vault/                         # vault server (ADR-0010 phase 2, Route A): main.bicep · main.parameters.json ·
-│       └── modules/{loganalytics,containerregistry,fileshare-storage,containerapps-environment,containerapp,vault-rbac}.bicep
+│       └── modules/{loganalytics,containerregistry,fileshare-storage,containerapps-environment,containerapp,containerapp-sync,vault-rbac}.bicep
 ├── samples/
 │   ├── adrs/*.md                      # sample ADRs with testable claims
 │   ├── evidence/*                     # csproj, appsettings, Bicep, Dockerfile, package.json samples (drift demo)
@@ -55,7 +55,8 @@
 │   ├── VaultMcp.Http/                 # remote host for a container (streamable HTTP; Locked until sign-in exists)
 │   ├── VaultMcp.Tests/                # xunit, throw-away vault on disk, in-process HTTP host
 │   ├── Dockerfile                     # non-root image of the HTTP host (build from the repository root)
-│   ├── azure.yaml                     # azd project of the vault server: infra/vault, service "vault", image built in the registry
+│   ├── sync/                          # step 2: headless Obsidian Sync sidecar (sync.mjs over the `ob` CLI, exclusions.mjs + tests, Dockerfile)
+│   ├── azure.yaml                     # azd project of the vault server: infra/vault, services "vault" and "sync", images built in the registry
 │   └── README.md · smoke-test.py      # set-up for each client; protocol-level check over stdio or HTTP
 ├── tools/AdrMcp.DocGen/               # generates docs/03-mcp-contracts.md from code
 ├── tools/AdrMcp.Import/               # scan and load existing ADR Markdown files (docs/10-legacy-adr-import.md)

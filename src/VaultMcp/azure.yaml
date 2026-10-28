@@ -18,3 +18,11 @@ services:
       path: ./Dockerfile
       context: ../../      # the Dockerfile copies Directory.Build.props and Directory.Packages.props from the repository root
       remoteBuild: true    # built by Azure Container Registry; no Docker on your machine
+  sync:
+    # Step 2: the headless Obsidian Sync client. Deploy it only after a provision with VAULT_SYNC_ENABLED=true created the app.
+    project: ./sync
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      remoteBuild: true

@@ -58,6 +58,23 @@ jobs:
       - name: Test
         run: dotnet test src/VaultMcp/VaultMcp.sln -c Release --no-build --logger "console;verbosity=normal"
 
+      # The headless Sync sidecar (ADR-0010 phase 2, step 2): its exclusion logic has unit tests, and its image must build and
+      # fail closed when it is started without settings. The real `ob` client needs an Obsidian account, so it is not exercised here.
+      - uses: actions/setup-node@v5
+        with: { node-version: '22' }
+      - name: Test the sync sidecar's allow-list logic
+        run: node --test src/VaultMcp/sync
+      - name: Build the sync sidecar image and check it refuses to start unconfigured
+        run: |
+          set -eu
+          docker build -t vault-sync:ci src/VaultMcp/sync
+          docker run --rm --entrypoint sh vault-sync:ci -c 'command -v ob && node --version'
+          if docker run --rm vault-sync:ci --check; then
+            echo "::error::the sync sidecar accepted an empty configuration"; exit 1
+          else
+            echo "refused as expected"
+          fi
+
       - name: Smoke test the stdio host over the real protocol
         run: python3 src/VaultMcp/smoke-test.py --dll src/VaultMcp/VaultMcp.Stdio/bin/Release/net10.0/VaultMcp.Stdio.dll
 

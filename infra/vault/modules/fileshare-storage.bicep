@@ -6,6 +6,8 @@ param name string
 param location string
 param tags object
 param shareName string
+@description('Second share: the headless Sync client\'s own state (login, sync bookkeeping). Mounted by the sync app only, never by the server.')
+param stateShareName string
 @description('Size limit of the share in GiB. A vault of Markdown notes is small; raise it if Obsidian attachments are allow-listed.')
 param shareQuotaGiB int = 5
 @allowed([ 'ManagedIdentity', 'AccountKey' ])
@@ -58,6 +60,16 @@ resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2025-01-01
   }
 }
 
+resource stateShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2025-01-01' = {
+  parent: fileService
+  name: stateShareName
+  properties: {
+    shareQuota: 1
+    enabledProtocols: 'SMB'
+  }
+}
+
 output name string = storage.name
 output id string = storage.id
 output shareName string = share.name
+output stateShareName string = stateShare.name

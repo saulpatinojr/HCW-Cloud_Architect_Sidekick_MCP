@@ -264,7 +264,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get("vault:region:southcentralus");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps").Node;
+        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01").Node;
         var container = app["properties"]!["template"]!["containers"]![0]!;
         var env = container["env"]?.AsArray().Select(e => e!["name"]!.GetValue<string>()) ?? [];
         Assert.DoesNotContain("Vault__Auth__Mode", env);   // unset means Locked: 401 on /mcp until step 3 adds sign-in
@@ -274,10 +274,14 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Equal("UserAssigned", app["identity"]!["type"]!.GetValue<string>());
         Assert.Equal("Single", app["properties"]!["configuration"]!["activeRevisionsMode"]!.GetValue<string>());
 
-        var share = snapshot.Resources.Single(r => r.Type == "Microsoft.App/managedEnvironments/storages").Node["properties"]!["azureFile"]!;
-        Assert.Equal("ReadOnly", share["accessMode"]!.GetValue<string>());
-        Assert.Null(share["accountKey"]);   // identity mount by default
-        Assert.NotNull(share["identity"]);
+        var mounts = snapshot.Resources.Where(r => r.Type == "Microsoft.App/managedEnvironments/storages").ToDictionary(r => r.Name[(r.Name.LastIndexOf('/') + 1)..], r => r.Node["properties"]!["azureFile"]!);
+        Assert.Equal(new[] { "syncstate", "vault", "vault-rw" }, mounts.Keys.OrderBy(k => k, StringComparer.Ordinal));
+        Assert.Equal("ReadOnly", mounts["vault"]["accessMode"]!.GetValue<string>());       // the server's mount
+        Assert.Equal("ReadWrite", mounts["vault-rw"]["accessMode"]!.GetValue<string>());   // the sync app's mount of the same share
+        Assert.Equal("ReadWrite", mounts["syncstate"]["accessMode"]!.GetValue<string>());
+        Assert.All(mounts.Values, m => { Assert.Null(m["accountKey"]); Assert.NotNull(m["identity"]); });   // identity mounts by default
+        Assert.Equal("vault", app["properties"]!["template"]!["volumes"]![0]!["storageName"]!.GetValue<string>());   // the server never gets the read-write one
+        Assert.DoesNotContain(snapshot.Resources, r => r.Type == "Microsoft.App/containerApps" && r.Name.Contains("-sync-"));   // step 2 is off by default
 
         var storage = snapshot.Resources.Single(r => r.Type == "Microsoft.Storage/storageAccounts").Node["properties"]!;
         Assert.False(storage["allowSharedKeyAccess"]!.GetValue<bool>());
@@ -308,13 +312,52 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Contains("containers[0].image", image);
         Assert.DoesNotContain("mcr.microsoft.com", image);
 
-        var share = snapshot.Resources.Single(r => r.Type == "Microsoft.App/managedEnvironments/storages").Node["properties"]!["azureFile"]!;
-        Assert.Null(share["identity"]);
-        Assert.Contains("listKeys(", share["accountKey"]!.GetValue<string>());   // read inside the deployment, never an output
+        foreach (var share in snapshot.Resources.Where(r => r.Type == "Microsoft.App/managedEnvironments/storages").Select(r => r.Node["properties"]!["azureFile"]!))
+        {
+            Assert.Null(share["identity"]);
+            Assert.Contains("listKeys(", share["accountKey"]!.GetValue<string>());   // read inside the deployment, never an output
+        }
         var storage = snapshot.Resources.Single(r => r.Type == "Microsoft.Storage/storageAccounts").Node["properties"]!;
         Assert.True(storage["allowSharedKeyAccess"]!.GetValue<bool>());
         Assert.False(storage["azureFilesIdentityBasedAuthentication"]!["smbOAuthSettings"]!["isSmbOAuthEnabled"]!.GetValue<bool>());
         Assert.DoesNotContain(snapshot.Resources, r => r.Type == "Microsoft.Authorization/roleAssignments" && r.Name.Contains("a235d3ee-5935-4cfb-8cc5-a3303ad5995e"));   // no SMB identity role without the identity mount
+    }
+
+    [BicepFact]
+    public async Task The_sync_app_has_no_ingress_writes_the_shares_as_its_own_user_and_reads_secrets_from_Key_Vault_only()
+    {
+        // Step 2 (ADR-0010): the headless Obsidian Sync client as a second container app, deployed only when syncEnabled.
+        var snapshot = await _bicep.Get("vault:sync");
+        Assert.True(snapshot.Succeeded, snapshot.Output);
+
+        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        Assert.Equal(new[] { "ca-vault-dev-scus-01", "ca-vault-sync-dev-scus-01" }, snapshot.Resources.Where(r => r.Type == "Microsoft.App/containerApps").Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal));
+
+        var sync = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-sync-dev-scus-01");
+        Assert.Equal("sync", sync.Tags["azd-service-name"]);
+        var configuration = sync.Node["properties"]!["configuration"]!;
+        Assert.Null(configuration["ingress"]);   // nothing reaches it from outside
+        var secrets = configuration["secrets"]!.AsArray();
+        Assert.Equal(new[] { "obsidian-email", "obsidian-password", "obsidian-vault-password" }, secrets.Select(s => s!["name"]!.GetValue<string>()).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.All(secrets, s => { Assert.Null(s!["value"]); Assert.Contains("secrets/obsidian-", s["keyVaultUrl"]!.GetValue<string>()); Assert.NotNull(s["identity"]); });   // Key Vault references only
+
+        var container = sync.Node["properties"]!["template"]!["containers"]![0]!;
+        var env = container["env"]!.AsArray().ToDictionary(e => e!["name"]!.GetValue<string>(), e => e!);
+        Assert.Equal("My Vault", env["OB_VAULT"]["value"]!.GetValue<string>());
+        Assert.Equal("Personal,Journal", env["SYNC_EXCLUDE_SEED"]["value"]!.GetValue<string>());
+        Assert.Equal("/state", env["HOME"]["value"]!.GetValue<string>());
+        foreach (var secret in new[] { "OB_VAULT_PASSWORD", "OB_EMAIL", "OB_PASSWORD" }) { Assert.Null(env[secret]["value"]); Assert.StartsWith("obsidian-", env[secret]["secretRef"]!.GetValue<string>()); }
+
+        var volumes = sync.Node["properties"]!["template"]!["volumes"]!.AsArray().ToDictionary(v => v!["name"]!.GetValue<string>(), v => v!);
+        Assert.Equal("vault-rw", volumes["vault"]["storageName"]!.GetValue<string>());
+        Assert.Equal("syncstate", volumes["state"]["storageName"]!.GetValue<string>());
+        Assert.All(volumes.Values, v => Assert.Contains("uid=1001", v["mountOptions"]!.GetValue<string>()));   // the image's non-root user owns the mounts
+        Assert.Equal(1, sync.Node["properties"]!["template"]!["scale"]!["maxReplicas"]!.GetValue<int>());   // one writer
+
+        // The server still mounts the read-only definition in the same deployment.
+        var server = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01");
+        Assert.Equal("vault", server.Node["properties"]!["template"]!["volumes"]![0]!["storageName"]!.GetValue<string>());
     }
 
     [BicepFact]
@@ -351,6 +394,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("keyvault-length", "longer than the 24 characters")]
     [InlineData("reserved-workload", "must start with \"vault\"")]
     [InlineData("custom-workload", "must start with \"vault\"")]
+    [InlineData("sync-vault", "VAULT_SYNC_REMOTE_VAULT")]
     public async Task A_vault_name_part_that_Azure_would_reject_stops_the_deployment_before_anything_is_created(string parameter, string expectedMessage)
     {
         var snapshot = await _bicep.Get($"vault:reject:{parameter}");
@@ -440,7 +484,7 @@ internal static class NamingChecks
         ["Microsoft.ContainerRegistry/registries"] = new(5, 50, @"^[A-Za-z0-9]+$", "5-50; letters and digits only; global"),
     };
 
-    // abbreviation, optional components (a name takes exactly one when the list is not empty), whether the optional suffix applies, hyphenated.
+    // abbreviation, the components a name may carry (at most one; a name without one is fine too), whether the optional suffix applies, hyphenated.
     private sealed record Shape(string Abbreviation, string[] Components, bool TakesSuffix, bool Hyphenated = true);
 
     private static readonly Dictionary<string, Shape> Shapes = new(StringComparer.OrdinalIgnoreCase)
@@ -457,7 +501,7 @@ internal static class NamingChecks
         ["Microsoft.DocumentDB/databaseAccounts"] = new("cosno", [], true),
         ["Microsoft.KeyVault/vaults"] = new("kv", [], true),
         ["Microsoft.Storage/storageAccounts"] = new("st", [], true, Hyphenated: false),
-        ["Microsoft.App/containerApps"] = new("ca", [], false),
+        ["Microsoft.App/containerApps"] = new("ca", ["sync"], false),   // the vault server, and the headless Sync client next to it
         ["Microsoft.App/managedEnvironments"] = new("cae", [], false),
         ["Microsoft.ContainerRegistry/registries"] = new("cr", [], true, Hyphenated: false),
     };
@@ -506,7 +550,7 @@ internal static class NamingChecks
             }
             if (Shapes.TryGetValue(type, out var shape))
             {
-                var component = shape.Components.Length == 0 ? "" : $"(?:{string.Join("|", shape.Components.Select(Regex.Escape))})-";
+                var component = shape.Components.Length == 0 ? "" : $"(?:(?:{string.Join("|", shape.Components.Select(Regex.Escape))})-)?";
                 var suffixPart = shape.TakesSuffix ? Regex.Escape(suffix) : "";
                 var pattern = shape.Hyphenated
                     ? $"^{shape.Abbreviation}-{Regex.Escape(workload)}-{component}{Regex.Escape(environment)}-{Regex.Escape(regionCode)}-01{suffixPart}$"
@@ -556,8 +600,12 @@ internal static class NamingChecks
         if (!r.Tags.ContainsKey("azd-env-name")) problems.Add($"{r.Type} '{r.Name}': tag azd-env-name is missing (azd needs it).");
         if (r.Type.Equals("Microsoft.Web/sites", StringComparison.OrdinalIgnoreCase) && !(r.Tags.TryGetValue("azd-service-name", out var service) && service == "api"))
             problems.Add($"{r.Type} '{r.Name}': tag azd-service-name must be 'api' (azure.yaml service name); azd deploy finds the function app by it.");
-        if (r.Type.Equals("Microsoft.App/containerApps", StringComparison.OrdinalIgnoreCase) && !(r.Tags.TryGetValue("azd-service-name", out var app) && app == "vault"))
-            problems.Add($"{r.Type} '{r.Name}': tag azd-service-name must be 'vault' (src/VaultMcp/azure.yaml service name); azd deploy finds the container app by it.");
+        if (r.Type.Equals("Microsoft.App/containerApps", StringComparison.OrdinalIgnoreCase))
+        {
+            var expectedService = r.Name.Contains("-sync-", StringComparison.Ordinal) ? "sync" : "vault";   // the two services in src/VaultMcp/azure.yaml
+            if (!(r.Tags.TryGetValue("azd-service-name", out var app) && app == expectedService))
+                problems.Add($"{r.Type} '{r.Name}': tag azd-service-name must be '{expectedService}' (src/VaultMcp/azure.yaml service name); azd deploy finds the container app by it.");
+        }
 
         var isGroup = r.Type.Equals("Microsoft.Resources/resourceGroups", StringComparison.OrdinalIgnoreCase);
         if (isGroup && r.Tags.ContainsKey("component")) problems.Add($"{r.Type} '{r.Name}': the resource group holds every component, so it has no component tag.");
@@ -680,6 +728,8 @@ public sealed class BicepSnapshotFixture : IDisposable
         foreach (var region in regions) scenarios[$"vault:region:{region}"] = Parameters(region);
         scenarios["vault:suffix"] = Parameters("southcentralus", ("nameSuffix", Quote("b")));
         scenarios["vault:exists"] = Parameters("southcentralus", ("vaultExists", "true"), ("shareAuth", Quote("AccountKey")));   // every later provision, and the key fallback
+        scenarios["vault:sync"] = Parameters("southcentralus", ("syncEnabled", "true"), ("syncRemoteVault", Quote("My Vault")), ("syncExcludeSeed", Quote("Personal,Journal")), ("syncLoginFromKeyVault", "true"));   // step 2: the headless Sync app
+        scenarios["vault:reject:sync-vault"] = Parameters("southcentralus", ("syncEnabled", "true"));   // sync on without a remote vault name
         scenarios["vault:long:westcentralus"] = InEnvironment("prod", Parameters("westcentralus", ("workloadName", Quote("vaultmc")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));   // kv-vaultmc-prod-wcus-01b = 24
         scenarios["vault:reject:location"] = Parameters("brazilsouth");
         scenarios["vault:reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));

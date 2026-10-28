@@ -9,7 +9,8 @@ param logAnalyticsWorkspaceId string
 param identityId string
 param storageAccountName string
 param shareName string
-@description('Name of the storage definition inside the environment; the container app refers to it by this name.')
+param stateShareName string
+@description('Name of the read-only storage definition the vault server mounts; the read-write one for the sync app is <name>-rw, the state one is the state share name.')
 param storageDefinitionName string
 @allowed([ 'ManagedIdentity', 'AccountKey' ])
 param shareAuth string
@@ -40,19 +41,28 @@ resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   }
 }
 
-// The vault server only reads, so this definition is read-only. Step 2 adds a second, read-write definition of the same share
-// for the headless Sync container. ARM evaluates only the chosen branch of the condition, so no key is read in ManagedIdentity mode.
-resource vaultShare 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = {
+// Three mounts of two shares. The vault server only reads (ReadOnly); the headless Sync app writes the vault copy and keeps
+// its own login state on the second share (ReadWrite). ARM evaluates only the chosen branch of the condition, so no key is
+// read in ManagedIdentity mode.
+var mounts = [
+  { name: storageDefinitionName, share: shareName, access: 'ReadOnly' }
+  { name: '${storageDefinitionName}-rw', share: shareName, access: 'ReadWrite' }
+  { name: stateShareName, share: stateShareName, access: 'ReadWrite' }
+]
+
+resource shares 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = [for m in mounts: {
   parent: environment
-  name: storageDefinitionName
+  name: m.name
   properties: {
     azureFile: shareAuth == 'ManagedIdentity'
-      ? { accountName: storageAccountName, shareName: shareName, accessMode: 'ReadOnly', identity: identityId }
-      : { accountName: storageAccountName, shareName: shareName, accessMode: 'ReadOnly', accountKey: storageAccount.listKeys().keys[0].value }
+      ? { accountName: storageAccountName, shareName: m.share, accessMode: m.access, identity: identityId }
+      : { accountName: storageAccountName, shareName: m.share, accessMode: m.access, accountKey: storageAccount.listKeys().keys[0].value }
   }
-}
+}]
 
 output id string = environment.id
 output name string = environment.name
 output defaultDomain string = environment.properties.defaultDomain
-output storageDefinitionName string = vaultShare.name
+output storageDefinitionName string = shares[0].name
+output storageDefinitionNameReadWrite string = shares[1].name
+output stateStorageDefinitionName string = shares[2].name

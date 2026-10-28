@@ -1,0 +1,12 @@
+{
+  "name": "vault-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Obsidian Headless sync sidecar for the vault MCP server (ADR-0010 phase 2, step 2): pull-only, allow-list driven",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test"
+  }
+}

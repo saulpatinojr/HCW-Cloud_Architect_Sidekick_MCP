@@ -1,7 +1,8 @@
 // Obsidian vault MCP server (ADR-0010, phase 2, Route A) - Azure infrastructure (subscription scope, azd compatible).
-// Creates, in its own resource group: user-assigned identity, Log Analytics, container registry, storage account with one SMB
-// file share (the synced vault copy), Key Vault (the step 2 Sync credentials go there, out of band), a Container Apps
-// environment with the share linked read-only, the vault server as one Container App, and the role assignments.
+// Creates, in its own resource group: user-assigned identity, Log Analytics, container registry, storage account with two SMB
+// file shares (the synced vault copy, and the Sync client's state), Key Vault (the Obsidian secrets go there, out of band),
+// a Container Apps environment with the shares linked, the vault server as one Container App (share read-only), optionally
+// the headless Sync client as a second Container App (share read-write, step 2), and the role assignments.
 // It shares nothing with the ADR server's deployment (infra/main.bicep) except the Bicep modules and this naming convention.
 // No secrets are emitted: the image is pulled with the identity, the share is mounted with the identity, logs flow by diagnostic setting.
 // Names and tags follow ADR-0009 (docs/adr/ADR-0009-azure-naming-convention.md): <abbr>-<workload>-<environment>-<region>-<nn>.
@@ -46,6 +47,29 @@ param shareAuth string = 'ManagedIdentity'
 @maxValue(100)
 param shareQuotaGiB int = 5
 
+@description('Step 2: deploy the headless Obsidian Sync app (ca-<workload>-sync-...). Off until the Obsidian secrets are in Key Vault, because the app references them at start.')
+param syncEnabled bool = false
+
+@description('Set by azd (SERVICE_SYNC_RESOURCE_EXISTS): true when the sync app already exists, so that the image azd deployed is kept across provisions.')
+param syncExists bool = false
+
+@description('Step 2: name or id of the remote vault on Obsidian Sync. Required when syncEnabled.')
+param syncRemoteVault string = ''
+
+@description('Step 2: comma-separated top-level vault folders to exclude before adr-sidekick.md has been synced; afterwards the note decides. Without it the sync app refuses to sync until the note is present.')
+param syncExcludeSeed string = ''
+
+@description('Step 2: seconds between sync cycles.')
+@minValue(15)
+@maxValue(3600)
+param syncIntervalSeconds int = 60
+
+@description('Step 2: the remote vault uses end-to-end encryption, so the Key Vault secret obsidian-vault-password must exist.')
+param syncVaultEncrypted bool = true
+
+@description('Step 2: log in with the Key Vault secrets obsidian-email and obsidian-password (an account without two-factor authentication). false: log in once by hand with az containerapp exec; the login persists on the state share.')
+param syncLoginFromKeyVault bool = false
+
 @description('Opt-in: principal id (object id) of the person who will put the step 2 secrets into Key Vault (Key Vault Secrets Officer). Set VAULT_DEPLOYER_PRINCIPAL_ID yourself; it is deliberately not AZURE_PRINCIPAL_ID, which azd fills in on every provision, so nobody gets the role by accident.')
 param deployerPrincipalId string = ''
 
@@ -80,7 +104,9 @@ var nameProblem = empty(regionCode)
       ? 'environmentName "${environmentName}" must end with "-${environmentShort}". The azd environment name is not part of any resource name, so two azd environments in one subscription and region with the same environmentShort would get the same names and overwrite each other. Name the azd environment vault-<short> (for example vault-prod) and set VAULT_ENVIRONMENT_SHORT to <short> for it (ADR-0009).'
       : length(keyVaultName) > 24
         ? 'The Key Vault name ${keyVaultName} is longer than the 24 characters Azure allows. Shorten workloadName, environmentShort or nameSuffix.'
-        : ''
+        : syncEnabled && empty(syncRemoteVault)
+          ? 'syncEnabled needs the remote vault: set VAULT_SYNC_REMOTE_VAULT to the name of the vault on Obsidian Sync.'
+          : ''
 
 var names = !empty(nameProblem)
   ? fail(nameProblem)
@@ -93,11 +119,14 @@ var names = !empty(nameProblem)
     keyVault: keyVaultName
     environment: '${abbrs.appManagedEnvironments}-${baseName}'
     containerApp: '${abbrs.appContainerApps}-${baseName}'
+    containerAppSync: '${abbrs.appContainerApps}-${workloadName}-sync-${nameTail}'   // component "sync" (ADR-0009 decision 1)
   }
 
 // Data names (not Azure resource names, ADR-0009 decision 8).
-var shareName = 'vault'          // the file share and the environment's storage definition
+var shareName = 'vault'          // the file share and the environment's read-only storage definition (read-write: vault-rw)
+var stateShareName = 'syncstate' // the Sync client's own state (login), mounted by the sync app only
 var azdServiceName = 'vault'     // the service in src/VaultMcp/azure.yaml; azd finds the container app by this tag
+var azdSyncServiceName = 'sync'  // the second service in the same file
 
 // Tags (ADR-0009). 'component' is added per module below. 'azd-env-name' stays: azd needs it to find the environment's resources.
 var tags = {
@@ -139,6 +168,7 @@ module storage './modules/fileshare-storage.bicep' = {
     location: location
     tags: union(tags, { component: 'data' })
     shareName: shareName
+    stateShareName: stateShareName
     shareQuotaGiB: shareQuotaGiB
     shareAuth: shareAuth
   }
@@ -187,6 +217,7 @@ module environment './modules/containerapps-environment.bicep' = {
     identityId: identity.outputs.id
     storageAccountName: storage.outputs.name
     shareName: storage.outputs.shareName
+    stateShareName: storage.outputs.stateShareName
     storageDefinitionName: shareName
     shareAuth: shareAuth
   }
@@ -207,12 +238,35 @@ module containerApp './modules/containerapp.bicep' = {
   }
 }
 
+module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
+  name: 'containerapp-sync'
+  scope: rg
+  params: {
+    name: names.containerAppSync
+    location: location
+    tags: union(tags, { component: 'api', 'azd-service-name': azdSyncServiceName })
+    environmentId: environment.outputs.id
+    identityId: identity.outputs.id
+    registryLoginServer: registry.outputs.loginServer
+    exists: syncExists
+    vaultStorageDefinitionName: environment.outputs.storageDefinitionNameReadWrite
+    stateStorageDefinitionName: environment.outputs.stateStorageDefinitionName
+    keyVaultUri: keyVault.outputs.uri
+    remoteVault: syncRemoteVault
+    excludeSeed: syncExcludeSeed
+    intervalSeconds: syncIntervalSeconds
+    vaultEncrypted: syncVaultEncrypted
+    loginFromKeyVault: syncLoginFromKeyVault
+  }
+}
+
 output AZURE_LOCATION string = location
 output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer   // azd pushes (and remote-builds) the image here
 output AZURE_CONTAINER_REGISTRY_NAME string = registry.outputs.name
 output AZURE_CONTAINER_APPS_ENVIRONMENT string = environment.outputs.name
 output AZURE_CONTAINER_APP_NAME string = containerApp.outputs.name
+output AZURE_SYNC_CONTAINER_APP_NAME string = syncEnabled ? containerAppSync.?outputs.name ?? '' : ''
 output VAULT_MCP_ENDPOINT string = 'https://${containerApp.outputs.fqdn}/mcp'
 output VAULT_HEALTH_URL string = 'https://${containerApp.outputs.fqdn}/health'
 output AZURE_STORAGE_ACCOUNT string = storage.outputs.name

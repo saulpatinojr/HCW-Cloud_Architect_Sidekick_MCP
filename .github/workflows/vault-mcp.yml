@@ -60,7 +60,7 @@ jobs:
 
       # The headless Sync sidecar (ADR-0010 phase 2, step 2): its exclusion logic has unit tests, and its image must build and
       # fail closed when it is started without settings. The real `ob` client needs an Obsidian account, so it is not exercised here.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with: { node-version: '22' }
       - name: Test the sync sidecar's allow-list logic
         run: node --test 'src/VaultMcp/sync/*.test.mjs'

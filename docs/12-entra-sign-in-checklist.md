@@ -25,13 +25,13 @@ Do this signed in with a **work account in that tenant** that holds the Global A
 - [ ] **B2. Get P1.** Microsoft 365 admin center → Billing → Purchase services → search "Microsoft Entra ID P1" → Start free trial or Buy. Expect: the Entra admin center Overview page shows *Microsoft Entra ID P1*. Reference: [Sign up for Entra ID P1 or P2](https://learn.microsoft.com/entra/fundamentals/get-started-premium).
 - [ ] **B3. Assign the license** to each person who will sign in (Users → Active users → the user → Licenses and apps). Expect: a tick next to Microsoft Entra ID P1.
 - [ ] **B4. Swap Security Defaults for Conditional Access in one sitting.** Security Defaults (Microsoft's free MFA-for-everyone switch) and Conditional Access cannot both be on.
-  1. Entra admin center → Overview → Properties → Manage security defaults → Disabled (only if it was enabled).
+  1. Entra admin center → Overview → Properties → Manage security defaults. Write down whether it shows Enabled or Disabled (the undo below depends on it), then set it to Disabled if it was enabled.
   2. Entra ID → Conditional Access → Policies → New policy from template. Create **Require multifactor authentication for all users** and set it **On** at once; exclude the two B1 accounts.
   3. From the same templates create **Require phishing-resistant MFA for admins**, **Block legacy authentication** and **Require MFA for Azure management** in **Report-only**. After a few days with nothing unexpected in the sign-in logs, set them On.
   References: [Require MFA for all users](https://learn.microsoft.com/entra/identity/conditional-access/policy-all-users-mfa-strength), [Policy templates](https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common).
 - [ ] **B5. Check.** In a private browser window sign in at `https://myapps.microsoft.com`. Expect an Authenticator prompt.
 
-To undo: set the policies to Off and turn Security Defaults back on; the B1 accounts are the fallback.
+To undo: set the policies to Off. Turn Security Defaults back on only if you recorded it as Enabled in B4 step 1; if it was Disabled before, leave it off. The B1 accounts are the fallback.
 
 ## Part C. Read-only look at the dev environment
 
@@ -59,7 +59,7 @@ If any line differs, stop: do not turn sign-in on for a client. `AADSTS50105` fr
 
 ## Part E. Deployed test (staging or sandbox deployment, not `adr-dev`)
 
-- [ ] **E1.** Deploy with `azd env set ADR_ENTRA_VALIDATE_IN_APP true` ([docs/05](05-local-dev-and-deploy.md)).
+- [ ] **E1.** Run `azd env set ADR_ENTRA_VALIDATE_IN_APP true`, then `azd provision`, so the Function App actually receives the setting ([docs/05](05-local-dev-and-deploy.md)); `azd env set` alone changes only the local environment file. Expect: provision ends without an error, and the app's Environment variables page shows `Auth__Entra__ValidateBearerToken` = `true`.
 - [ ] **E2.** Repeat runbook step 5 with `$base` set to the deployed host. Expect lines 1–3 → 401 from App Service Authentication, line 4 onward → 200. This is the first proof that the platform passes the `Authorization` header through to the app.
 - [ ] To undo: `azd env set ADR_ENTRA_VALIDATE_IN_APP false` and provision again.
 

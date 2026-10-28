@@ -14,3 +14,10 @@ e2c954782fe57333c05bf8dde3cd4e753aa0117e:tools/AdrMcp.DocGen/Examples.cs:generic
 e2c954782fe57333c05bf8dde3cd4e753aa0117e:docs/03-mcp-contracts.md:generic-api-key:2698
 e2c954782fe57333c05bf8dde3cd4e753aa0117e:tests/AdrMcp.UnitTests/Application/UploadAndSafetyTests.cs:private-key:60
 e2c954782fe57333c05bf8dde3cd4e753aa0117e:tests/AdrMcp.UnitTests/Application/UploadAndSafetyTests.cs:stripe-access-token:61
+# vault-rbac.bicep 18-19 (2026-10-28): the same two Key Vault role definition GUIDs, in the vault server's template
+# (infra/vault, ADR-0010). Listed without a commit as well, because a squash merge gives the lines a new commit id and
+# gitleaks also matches the commit-less form (file:rule:line).
+e60a1e5f40be6e5b9e99c5ed3489a6b496674c69:infra/vault/modules/vault-rbac.bicep:generic-api-key:18
+e60a1e5f40be6e5b9e99c5ed3489a6b496674c69:infra/vault/modules/vault-rbac.bicep:generic-api-key:19
+infra/vault/modules/vault-rbac.bicep:generic-api-key:18
+infra/vault/modules/vault-rbac.bicep:generic-api-key:19

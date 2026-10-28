@@ -22,7 +22,7 @@ The owner keeps a "second brain" in Obsidian (a note-taking app whose vault is a
 ## Decision
 Two pieces, each useful alone, joined only by a setting that is off by default.
 
-1. **A standalone vault MCP server (`obsidian-vault-mcp`)**, a small local process that reads the vault folder directly. It needs neither Obsidian running nor an Obsidian plugin. Read-only tools: `vault_search` (keywords over a folder allow-list), `vault_note_get` (one note, truncated excerpt), `vault_backlinks` (notes that link to a note), `vault_tags` (notes with a tag). **It has no write tool, by the owner's decision**; it never creates, edits or deletes a file in the vault. It has no dependency on this repository's code and ships with its own tests. It lives in a separate repository, or in `tools/` here only if the owner prefers one repository; either way the ADR server's build and tests never reference it.
+1. **A standalone vault MCP server (`obsidian-vault-mcp`)**, a small local process that reads the vault folder directly. It needs neither Obsidian running nor an Obsidian plugin. Read-only tools: `vault_search` (keywords over a folder allow-list), `vault_note_get` (one note, truncated excerpt), `vault_backlinks` (notes that link to a note), `vault_tags` (notes with a tag). **It has no write tool, by the owner's decision**; it never creates, edits or deletes a file in the vault. It has no dependency on this repository's code and ships with its own tests. It lives in this repository under `src/VaultMcp/` with its own solution file (`VaultMcp.sln`), because phase 2 shares the Bicep modules, naming tests and CI shape; `AdrMcp.sln` never references it, so the ADR server's build and tests are unaffected.
    - **Clients:** Claude Code and Claude Desktop (owner's decision). Both run on the owner's machines and speak to the server over stdio. Other local clients (VS Code, Codex, Kiro) can use it too, but are not tested; Claude.ai in a browser is out of scope.
    - **Settings that follow the vault:** the folder allow-list, the context tag and the excerpt limit live in one ordinary Markdown note at the vault root, `adr-sidekick.md`, as front matter, so Obsidian Sync carries them to every machine. The only per-machine setting is the vault path, given in the client's MCP configuration. A machine with no `adr-sidekick.md` gets an empty allow-list: nothing is readable until the note exists.
 2. **Integration level A (no server change):** the client connects to both servers, and the `adr-author` and `drift-investigator` agents may cite vault notes in the Context and Rationale they draft. The citation names the note path; the ADR server never sees the vault.
@@ -51,9 +51,23 @@ Two pieces, each useful alone, joined only by a setting that is off by default.
 
 ## Owner decisions (2026-10-28)
 1. **Standalone in both directions:** the vault server works without the ADR server, and the ADR server works without the vault.
-2. **Clients:** Claude Code and Claude Desktop.
+2. **Clients:** Claude Code and Claude Desktop, and (added later the same day) **the Claude app on the phone**. The phone is phase 2 below.
 3. **Sync:** Obsidian Sync, more than one machine. Hence the in-vault settings note.
 4. **Read-only.** No write tool.
+
+## Phase 2: the phone (cloud lane)
+The Claude app on a phone talks only to remote MCP servers, through the same connectors as Claude.ai in a browser. So for the phone the vault server must run in Azure, and the notes must reach Azure. Obsidian Sync cannot carry them there: it is end-to-end encrypted, has no server-side read API and no headless client. A device that holds the decrypted vault has to push a plain copy of the allow-listed folders. On a phone that means an Obsidian community plugin that syncs to cloud storage (`Remotely Save` is the usual one; whether it writes to Azure Blob Storage directly, and in its free tier, is **to verify** against the plugin's current backend list; the fallback is OneDrive in the same tenant, read by the Function through Microsoft Graph).
+
+Design, kept standalone:
+1. **One codebase, two storage backends.** The vault server's core (allow-list, search, excerpts, backlinks, tags) reads an abstract file store. Phase 1 binds it to a local folder over stdio; phase 2 binds the same core to a Blob container over HTTP, hosted as its own Azure Functions app with the MCP extension, the same stack as the ADR server. Still no write tool in either mode.
+2. **Its own resources, named by [ADR-0009](ADR-0009-azure-naming-convention.md)** with workload `vault` (for example `func-vault-dev-scus-01`, `stvaultdevscus01`): a Function app, a storage account with one private container, managed identity, Key Vault only if a plugin credential is needed. It shares nothing with the ADR server at runtime; it shares the Bicep modules, the naming tests and the CI shape, so it lives in this repository under its own solution file that `AdrMcp.sln` never references.
+3. **Sign-in:** [ADR-0008](ADR-0008-entra-oauth-sign-in-for-mcp-clients.md) applies unchanged: App Service Authentication with Entra ID, the same pre-registered client apps, a second server app registration with its own `user_impersonation` scope and one app role (`Vault.Reader`). The owner is the only assignment.
+4. **The allow-list still lives in the vault** (`adr-sidekick.md`). The Blob copy carries it, so phone and laptops read the same list. The sync plugin pushes the folders it is told to; the server additionally refuses anything outside the allow-list, so a plugin misconfiguration leaks nothing through the tools. It can still leave a plain copy in the container, which is the owner's private storage, encrypted at rest and readable only by the Function's identity.
+5. **Freshness:** a note is as fresh as the last push from a device; every excerpt carries the file's modified time.
+
+**Prerequisites before phase 2 can be used:** checklist item F3 in [docs/12](../12-entra-sign-in-checklist.md) (Claude.ai and Desktop sign in through Entra) must pass, because the phone uses the same connector; and the sync plugin's backend and its mobile behaviour must be verified on the owner's phone. Neither is done. Whether the Claude mobile app shows custom connectors added on claude.ai is also **to verify** on the owner's phone.
+
+**Why not instead:** a cloud-only vault with no Obsidian Sync (rejected: the owner has Sync and uses it between machines; the cloud lane is an export, not a replacement); the ADR server reading the container itself (rejected: breaks standalone in both directions, and mixes personal notes into the ADR server's trust boundary; the existing evidence upload path remains the way notes reach the ADR server, level B); Obsidian Publish (rejected: it makes notes public).
 
 ## Gates before this ADR can be Accepted
 1. A prototype of the vault server passes its own tests with the ADR server stopped, and its tool list shows only the four read tools.
@@ -61,6 +75,7 @@ Two pieces, each useful alone, joined only by a setting that is off by default.
 3. On a second machine with the vault synced, the same `adr-sidekick.md` allow-list applies without any local setup beyond the vault path.
 4. A note outside the allow-list is not returned by `vault_search` or `vault_note_get`.
 5. Level B, if built: a note holding a fake secret is refused by the existing scanner on upload.
+6. Phase 2: the same tests pass against the Blob backend (Azurite locally); an unauthenticated call to the cloud vault server gets 401; the phone signs in and lists the four tools.
 
 ## Rollback
 Remove the optional `.mcp.json` entry and stop the vault server. Level B evidence is removed with `evidence_remove` like any other evidence. No ADR field was ever written by the integration, so nothing else changes.

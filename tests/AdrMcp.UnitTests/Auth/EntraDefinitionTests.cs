@@ -158,6 +158,25 @@ public class EntraDefinitionTests
     }
 
     [Fact]
+    public void The_setup_script_uses_every_checked_in_definition_and_never_creates_a_secret()
+    {
+        var script = Read("scripts/setup-entra-signin.ps1");
+        foreach (var file in new[] { "app-roles.json", "oauth2-permission-scopes.json", "vault-app-roles.json", "vault-oauth2-permission-scopes.json" })
+            Assert.Contains($"'{file}'", script);
+        foreach (var role in new[] { "Adr.Admin", AuthOptions.ApplicationReaderRole, "Vault.Reader" })
+            Assert.Contains($"'{role}'", script);
+        Assert.Contains("--requested-access-token-version 2", script);
+        Assert.Contains("appRoleAssignmentRequired=true", script);
+        Assert.Contains("--is-fallback-public-client true", script);
+        Assert.Contains("https://claude.ai/api/mcp/auth_callback", script);
+        // The secret of the confidential client is the owner's: the script may print the command, never run it.
+        Assert.DoesNotMatch(@"(?m)^\s*az ad app credential reset", script);
+        Assert.DoesNotContain("--client-secret", script);
+        Assert.Contains("docs/11", Read("docs/12-entra-sign-in-checklist.md"));
+        Assert.Contains("scripts/setup-entra-signin.ps1", Read("docs/11-entra-sign-in.md"));
+    }
+
+    [Fact]
     public void Infrastructure_never_forces_the_platform_authentication_flag_or_ships_a_token_or_secret_for_this_feature()
     {
         foreach (var file in Directory.EnumerateFiles(Path.Join(Root, "infra"), "*.*", SearchOption.AllDirectories).Concat(Directory.EnumerateFiles(Path.Join(Root, "scripts", "entra"))))

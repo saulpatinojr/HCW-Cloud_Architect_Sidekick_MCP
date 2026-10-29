@@ -43,7 +43,7 @@ Nothing here changes anything.
 
 ## Part D. Sandbox runbook (people)
 
-Run [the runbook in docs/11](11-entra-sign-in.md#real-tenant-verification-runbook) in a **sandbox tenant**, never in `adr-dev`. Prerequisites and the exact PowerShell blocks are there.
+Run [the runbook in docs/11](11-entra-sign-in.md#real-tenant-verification-runbook) in a **sandbox tenant**, never in `adr-dev`. Prerequisites and the exact PowerShell blocks are there. Step 1 can be the script `scripts/setup-entra-signin.ps1 -PreauthorizeAzureCli` instead of the pasted block; it ends with `PASS` per item, and the table's step 3 then confirms the same by hand.
 
 | | Runbook step | Expect |
 |---|---|---|

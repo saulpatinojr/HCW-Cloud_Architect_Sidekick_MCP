@@ -18,6 +18,8 @@
 //   SYNC_PRUNE             delete local copies of excluded folders after each cycle (default true)
 //   OB_DEVICE_NAME         how this client shows in Sync's version history (default the container app name)
 //   VAULT_PATH, STATE_PATH mount points (default /vault and /state); HOME must point at STATE_PATH so `ob` keeps its login there
+//   (obsidian-headless 0.0.14 on Linux writes $XDG_CONFIG_HOME/obsidian-headless/auth_token, default ~/.config/..., and its sync state next
+//   to it; XDG_CONFIG_HOME is pinned to STATE_PATH/.config below so that this does not depend on the image's HOME)
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,7 +42,7 @@ const fail = (code, message) => { console.error(message); process.exit(code); };
 function ob(args, { secretArgs = [] } = {}) {
   const shown = args.map(a => (secretArgs.includes(a) ? '<secret>' : a)).join(' ');
   // input: '' closes stdin, so a prompt the --json flag did not suppress ends with an error instead of hanging the cycle.
-  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: { ...env, HOME: statePath }, timeout: 15 * 60 * 1000 });
+  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: `${statePath}/.config` }, timeout: 15 * 60 * 1000 });
   if (result.error) return { ok: false, out: '', err: `ob could not start: ${result.error.message}`, shown };
   return { ok: result.status === 0, out: result.stdout ?? '', err: result.stderr ?? '', shown };
 }
@@ -48,7 +50,7 @@ function ob(args, { secretArgs = [] } = {}) {
 function checkConfiguration() {
   const problems = [];
   if (!env.OB_VAULT) problems.push('OB_VAULT is not set (the remote vault name or id).');
-  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: { ...env, HOME: statePath } }).error) problems.push('the ob command (obsidian-headless) is not installed.');
+  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: `${statePath}/.config` } }).error) problems.push('the ob command (obsidian-headless) is not installed.');
   if (!fs.existsSync(vaultPath)) problems.push(`VAULT_PATH ${vaultPath} does not exist (mount the vault share there).`);
   if (!fs.existsSync(statePath)) problems.push(`STATE_PATH ${statePath} does not exist (mount the state share there).`);
   if ((env.OB_EMAIL ? 1 : 0) + (env.OB_PASSWORD ? 1 : 0) === 1) problems.push('OB_EMAIL and OB_PASSWORD must be set together or not at all.');

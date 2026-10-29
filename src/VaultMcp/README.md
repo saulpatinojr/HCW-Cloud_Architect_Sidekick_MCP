@@ -179,7 +179,9 @@ Step 2 settings (`azd env set NAME VALUE`):
 
 To undo: `azd env set VAULT_SYNC_ENABLED false` and `azd provision` removes the sync app; the shares keep their content until you delete them or run `azd down`. The copy on the share is the only place in Azure that holds your notes in clear; it is readable by the two apps' identity and by whoever holds Storage File Data roles on the storage account.
 
-**Not verified yet** (needs a subscription and the beta): where `ob` stores its login on Linux (the state share is mounted as its home directory, which covers the usual places), whether `--excluded-folders` accepts nested paths such as `Projects/Home` (ADR-0010 names this as the fallback point: if not, keep allow-listed folders at the top level), and that a note edited on the phone reaches the share.
+**Settled by reading the client's code** (`obsidian-headless` 0.0.14, `cli.js`, 2026-10-28), not by running it: on Linux `ob` keeps its login in `$XDG_CONFIG_HOME/obsidian-headless/auth_token` (default `~/.config/...`, file mode 0600) and its sync state next to it, so with `HOME` and `XDG_CONFIG_HOME` on the state share a restart does not ask again (`OBSIDIAN_AUTH_TOKEN` in the environment is the client's own alternative); and `--excluded-folders` is split on commas and matched against `/`-separated vault paths as "the folder itself or anything under it", so a nested entry such as `Projects/Home` works and nested allow-list entries keep their phase 1 meaning (the fallback ADR-0010 named for this is not needed). `--mode pull-only` never uploads and deletes local copies of files the server deleted; `--excluded-folders ""` clears the list, which is why the sidecar refuses an empty one.
+
+**Not verified yet** (needs a subscription and the beta): a real sign-in and first sync, and that a note edited on the phone reaches the share.
 
 ## Sign in with Entra (phase 2, step 3)
 
@@ -256,7 +258,7 @@ Outside Azure the same settings are environment variables: `Vault__Auth__Mode=En
 
 To undo: `azd env set VAULT_AUTH_MODE Locked` and `azd provision` puts the server back to 401 for everyone; `az ad app delete --id "$app"` removes the app registration, its service principal and every assignment.
 
-**Not verified yet** (needs a tenant): the whole flow against real Entra tokens (the unit tests prove every row of the table with a key set made in the test), that Claude's connector and the phone accept this host's challenge and metadata (checklist F3), and the `CONTAINER_APP_HOSTNAME` fallback for the resource URI (the template passes the address explicitly, so nothing relies on it).
+**Not verified yet** (needs a tenant): the whole flow against real Entra tokens (the unit tests prove every row of the table with a key set made in the test), and that Claude's connector and the phone accept this host's challenge and metadata (checklist F3). When `Vault__Auth__Entra__ResourceUri` is unset the host builds it from `CONTAINER_APP_NAME` and `CONTAINER_APP_ENV_DNS_SUFFIX`, the app's stable address per Microsoft's list of built-in variables (never `CONTAINER_APP_HOSTNAME`, which names one revision); the template passes the address explicitly anyway.
 
 ## Connect the clients (phase 2, step 4)
 
@@ -313,7 +315,7 @@ What can go wrong, and what it means:
 
 To undo: `claude mcp remove vault`; in claude.ai *Customize → Connectors → vault → Remove* (the phone follows); `az ad app delete --id "$client"` removes the client registration for both servers, so prefer removing only its pre-authorization and its entry in `VAULT_ENTRA_ALLOWED_CLIENT_IDS`.
 
-**Not verified yet** (needs a tenant and the apps): every step above. In particular: that Entra accepts the `azurecontainerapps.io` address as an identifier URI (step 3; the v2.0 exemption says it should), that the hosted Claude apps complete the flow with an Entra public client (checklist F3), and that Claude accepts Entra's discovery metadata as it is (Claude requires PKCE S256, which Entra supports; whether Claude also insists on Entra advertising `code_challenge_methods_supported` is not known from its pages).
+**Not verified yet** (needs a tenant and the apps): every step above. In particular: that Entra accepts the `azurecontainerapps.io` address as an identifier URI (step 3; the v2.0 exemption says it should), that the hosted Claude apps complete the flow with an Entra public client (checklist F3), and that Claude accepts Entra's discovery metadata as it is. Read on 2026-10-28, Entra's document (`.../v2.0/.well-known/openid-configuration`) lists `scopes_supported` with `offline_access` (so Claude asks for a refresh token) and the usual endpoints, but **does not list `code_challenge_methods_supported`** and lists no `none` under `token_endpoint_auth_methods_supported`. Entra does support PKCE S256 and public clients; Claude's page says its client requires S256 support and that the MCP spec wants it advertised. If Claude refuses with "Authorization with the MCP server failed" before any sign-in page appears, this is the first thing to report (step number and the message).
 
 ## Tests
 

@@ -20,7 +20,7 @@
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.30.1" />
     <PackageVersion Include="Azure.Storage.Queues" Version="12.28.1" />
-    <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.63.2" />
+    <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.63.3" />
     <!-- Required explicitly by the Cosmos SDK; pinned to a version without known CVEs (CVE-2024-21907 affects < 13.0.1). We serialize with System.Text.Json. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Bearer token validation (ADR-0008). Exact versions on purpose: this is the signature and claim check. Latest stable on nuget.org, 2026-10-25. -->

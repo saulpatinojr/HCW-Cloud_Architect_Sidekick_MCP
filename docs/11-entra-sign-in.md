@@ -102,7 +102,7 @@ The owner decided on 2026-10-28 (docs/12, A4) that CI may call the server, and t
 - **No new credential.** The pipeline identity is the deploy job's own federated identity (`AZURE_CLIENT_ID`, OIDC, no secret). The repository variable `ADR_ENTRA_PIPELINE_READ=true` makes the job pass that ID as `ADR_ENTRA_PIPELINE_CLIENT_ID`; Bicep adds it to the allowed client IDs (edge and in-app alike) and, with `ADR_ENTRA_VALIDATE_IN_APP`, turns `Auth__Entra__AllowApplicationTokens` on. In `FunctionKey` mode the variable is refused by the preflight.
 - **What the job then does**: after the usual 401 check it gets a token for `api://<server client id>/.default` with `az account get-access-token` (masked), and runs `scripts/smoke-test.py --read-only`: `initialize`, `tools/list`, `adr_list`, `adr_search`, and `adr_create` **must** come back `FORBIDDEN`. A pipeline that could write fails the job.
 
-**Owner steps** (after Part F of the checklist, in the same terminal the runbook uses; report step numbers and status codes only):
+**Owner steps** (after Part F of the checklist, in the same terminal the runbook uses; report step numbers and status codes only). Steps 1 and 2 are also one script run: `.\scripts\setup-entra-signin.ps1 -PipelineClientId <AZURE_CLIENT_ID>` adds the role, assigns it to the pipeline's service principal and reads both back.
 
 1. Add the role to the server app (re-applying the file keeps the four user roles and adds the fifth): `az ad app update --id $app --app-roles @scripts/entra/app-roles.json`. Expect no output; `az ad app show --id $app --query 'appRoles[].value' -o tsv` lists five values.
 2. Assign it to the pipeline's service principal (the enterprise application of `AZURE_CLIENT_ID`):
@@ -161,6 +161,8 @@ Each client app ID goes in `ADR_ENTRA_ALLOWED_CLIENT_IDS` and is pre-authorized 
 - Easy Auth's MCP authorization is a preview feature.
 
 ## Real-tenant verification runbook
+
+**Scripted alternative for the Entra part:** `scripts/setup-entra-signin.ps1` creates or updates the same objects as step 1 below (and, with `-Vault`, the vault server's; with `-PipelineClientId`, the pipeline's read-only role; with `-ConfidentialClient`, the confidential client app without its secret), pre-authorizes the public client on each scope, and ends by reading everything back from Entra with one `PASS` line per item or a `FAIL` list. It is re-runnable (apps are found by display name, never duplicated) and never creates, prints or writes a secret. Run `.\scripts\setup-entra-signin.ps1 -PreauthorizeAzureCli` in the sandbox instead of step 1, then continue at step 2; steps 2 and 3 stay as the manual check, and `-ResourceUri` lets the script try the Application ID URI of step 2 itself (it reports FAIL and keeps `api://<client id>` if the tenant refuses). Report step numbers and PASS/FAIL lines only.
 
 Run this once in a **sandbox tenant**, before turning anything on for a client. It creates one app registration in Entra and runs the app on your machine. Nothing here is run by CI or by an agent. The commands are PowerShell (7 or Windows PowerShell 5.1). You need the Azure CLI, .NET 10, Azure Functions Core Tools 4, Azurite (`npm install -g azurite`), Python 3, and an account in the sandbox tenant that can create applications and assign app roles. Microsoft Learn lists Application Administrator and Cloud Application Administrator among the Entra roles supported for the app-role assignment call in step 1 ([Grant an appRoleAssignment for a service principal](https://learn.microsoft.com/graph/api/serviceprincipal-post-approleassignedto)); the permissions behind it are `AppRoleAssignment.ReadWrite.All` and `Application.Read.All`. If your account lacks them, run step 1 up to `az ad sp update` and ask an administrator to do the final assignment. Every step starts from the folder you cloned this repository into: `Test-Path scripts/entra/app-roles.json` must print `True`. Each block re-reads the values it needs, so you can paste it into a fresh window.
 
@@ -257,7 +259,7 @@ If any line differs from what is written, do not turn sign-in on for a client. O
 
 ## Known gaps
 
-- The Entra objects are created by hand-run commands, not by a setup script with a read-back `PASS` check (issue #27, item 4). That script, the client registrations and the staging sign-in of each client are the tenant half.
+- The Entra objects can be created by `scripts/setup-entra-signin.ps1`, re-runnable and with a read-back `PASS` check (issue #27, item 4); it has not been run against a tenant yet. The confidential client's secret and the staging sign-in of each client remain the tenant half.
 - Easy Auth's MCP authorization is a preview feature. The app's own metadata and challenge are meant as a fallback, but behind Easy Auth they may never be reached (see above), and the MCP address itself can only be challenged by the platform.
 - The key cache is strict by design: once its lifetime ends and a refresh fails, calls get 503 until the key endpoint answers, even for key IDs that were cached. A bounded grace period is an owner decision.
 - A custom domain may be needed for the Application ID URI (step 2).

@@ -36,7 +36,7 @@ public sealed record VaultEntraOptions(
     public const string AllowedClientIdsKey = SectionKey + ":AllowedClientIds";
     public const string RequiredRoleKey = SectionKey + ":RequiredRole";
     public const string ScopeKey = SectionKey + ":Scope";
-    /// <summary>The canonical MCP URL: the RFC 8707 resource and the <c>resource</c> of the protected resource metadata. Derived from <see cref="ContainerAppsHostNameMarker"/> when unset.</summary>
+    /// <summary>The canonical MCP URL: the RFC 8707 resource and the <c>resource</c> of the protected resource metadata. Derived from the app's stable address (<see cref="VaultHostOptions.ContainerAppsMarker"/> plus <see cref="ContainerAppsDnsSuffixMarker"/>) when unset.</summary>
     public const string ResourceUriKey = SectionKey + ":ResourceUri";
     public const string AuthorityHostKey = SectionKey + ":AuthorityHost";
 
@@ -45,8 +45,13 @@ public sealed record VaultEntraOptions(
     public const string DefaultAuthorityHost = "login.microsoftonline.com";
     public const string McpPath = "/mcp";
 
-    /// <summary>Set by Azure Container Apps on every replica: the app's public host name. Used for the resource URI when none is configured.</summary>
-    public const string ContainerAppsHostNameMarker = "CONTAINER_APP_HOSTNAME";
+    /// <summary>
+    /// Set by Azure Container Apps on every replica: the environment's DNS suffix. The app's stable address is
+    /// <c>&lt;CONTAINER_APP_NAME&gt;.&lt;CONTAINER_APP_ENV_DNS_SUFFIX&gt;</c> (Microsoft Learn, "Built-in environment variables"); it is used for the
+    /// resource URI when none is configured. <c>CONTAINER_APP_HOSTNAME</c> is deliberately not used: it names one revision, and a token's
+    /// resource must stay the same across revisions.
+    /// </summary>
+    public const string ContainerAppsDnsSuffixMarker = "CONTAINER_APP_ENV_DNS_SUFFIX";
 
     /// <summary><c>https://&lt;authority host&gt;/&lt;tenant&gt;/v2.0</c>, compared with the token's <c>iss</c> by exact string match; also the OpenID Connect authority.</summary>
     public string Issuer => $"https://{AuthorityHost}/{TenantId}/v2.0";
@@ -90,9 +95,11 @@ public sealed record VaultEntraOptions(
         var resource = configuration[ResourceUriKey]?.Trim();
         if (string.IsNullOrEmpty(resource))
         {
-            var platformHost = environment(ContainerAppsHostNameMarker)?.Trim();
-            if (!string.IsNullOrEmpty(platformHost) && HostName.IsMatch(platformHost)) resource = $"https://{platformHost.ToLowerInvariant()}{McpPath}";
-            else failures.Add($"{ResourceUriKey} is required when the platform does not set {ContainerAppsHostNameMarker}: the MCP endpoint's https URL, for example https://<host>{McpPath}.");
+            var appName = environment(VaultHostOptions.ContainerAppsMarker)?.Trim();
+            var dnsSuffix = environment(ContainerAppsDnsSuffixMarker)?.Trim();
+            var platformHost = string.IsNullOrEmpty(appName) || string.IsNullOrEmpty(dnsSuffix) ? null : $"{appName}.{dnsSuffix}";
+            if (platformHost is not null && HostName.IsMatch(platformHost)) resource = $"https://{platformHost.ToLowerInvariant()}{McpPath}";
+            else failures.Add($"{ResourceUriKey} is required when the platform does not set {VaultHostOptions.ContainerAppsMarker} and {ContainerAppsDnsSuffixMarker}: the MCP endpoint's https URL, for example https://<host>{McpPath}.");
         }
         else
         {

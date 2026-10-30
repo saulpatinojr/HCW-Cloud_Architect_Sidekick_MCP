@@ -266,10 +266,21 @@ public sealed class EntraSignInTests : IDisposable
         Assert.Equal(Issuer, entra.Issuer);
         Assert.Equal(ClientScope, entra.ClientScope);
 
-        // Entra mode is the one meant for Container Apps, so the marker does not refuse it, and the platform host name supplies the resource.
+        // Entra mode is the one meant for Container Apps, so the marker does not refuse it, and the app's stable address (name + environment DNS
+        // suffix) supplies the resource. CONTAINER_APP_HOSTNAME names one revision and must never be used: a token's resource outlives a revision.
         var inAzure = VaultHostOptions.From(Config(good.Where(p => p.Item1 != VaultEntraOptions.ResourceUriKey).ToArray()),
-            name => name switch { VaultHostOptions.ContainerAppsMarker => "ca-vault-dev-scus-01", VaultEntraOptions.ContainerAppsHostNameMarker => "CA-vault-dev-scus-01.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io", _ => null });
+            name => name switch
+            {
+                VaultHostOptions.ContainerAppsMarker => "CA-vault-dev-scus-01",
+                VaultEntraOptions.ContainerAppsDnsSuffixMarker => "proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io",
+                "CONTAINER_APP_HOSTNAME" => "ca-vault-dev-scus-01--20mh1s9.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io",
+                _ => null,
+            });
         Assert.Equal("https://ca-vault-dev-scus-01.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io/mcp", inAzure.Entra!.ResourceUri);
+        // The name alone (no suffix) is not enough to build an address.
+        var halfPlatform = Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(Config(good.Where(p => p.Item1 != VaultEntraOptions.ResourceUriKey).ToArray()),
+            name => name == VaultHostOptions.ContainerAppsMarker ? "ca-vault-dev-scus-01" : null));
+        Assert.Contains("ResourceUri", halfPlatform.Message);
 
         // Indexed children work too (Vault__Auth__Entra__AllowedClientIds__0).
         var indexed = good.Where(p => p.Item1 != VaultEntraOptions.AllowedClientIdsKey).Append((VaultEntraOptions.AllowedClientIdsKey + ":0", AllowedClient)).Append((VaultEntraOptions.AllowedClientIdsKey + ":1", OtherClient)).ToArray();

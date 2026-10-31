@@ -313,6 +313,51 @@ public sealed class EntraSignInTests : IDisposable
         }
     }
 
+    /// <summary>Entra's own configuration manager type, fed by a retriever that answers from memory (or fails) instead of the network.</summary>
+    private static ConfigurationManager<OpenIdConnectConfiguration> RealManager(IDocumentRetriever retriever)
+        => new("http://keys.local/.well-known/openid-configuration", new OpenIdConnectConfigurationRetriever(), retriever) { RefreshInterval = TimeSpan.FromSeconds(1), AutomaticRefreshInterval = TimeSpan.FromHours(1) };
+
+    /// <summary>Serves the OpenID document and a key set holding the given keys, the way login.microsoftonline.com would.</summary>
+    private sealed class InMemoryMetadata : IDocumentRetriever
+    {
+        private readonly RsaSecurityKey[] _keys;
+        public InMemoryMetadata(params RsaSecurityKey[] keys) => _keys = keys;
+        public Task<string> GetDocumentAsync(string address, CancellationToken cancel)
+        {
+            if (address.EndsWith("/keys", StringComparison.Ordinal))
+            {
+                var keys = _keys.Select(k => { var p = k.Rsa.ExportParameters(false); return new { kty = "RSA", use = "sig", kid = k.KeyId, n = Base64UrlEncoder.Encode(p.Modulus), e = Base64UrlEncoder.Encode(p.Exponent) }; });
+                return Task.FromResult(JsonSerializer.Serialize(new { keys }));
+            }
+            return Task.FromResult(JsonSerializer.Serialize(new { issuer = Issuer, authorization_endpoint = Issuer + "/authorize", token_endpoint = Issuer + "/token", jwks_uri = "http://keys.local/keys" }));
+        }
+    }
+
+    [Fact]
+    public async Task Through_entras_own_configuration_manager_a_known_key_opens_the_tools_and_an_unknown_key_is_401()
+    {
+        using var host = Host(RealManager(new InMemoryMetadata(_key)));
+        var accepted = await McpClient(host, Token()).PostAsync("/mcp", JsonRpc("initialize", 1, InitializeParams()));
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        // The metadata is reachable and names other keys: a token signed with a key Entra never published is invalid, not "undecidable".
+        using var otherKeys = Host(RealManager(new InMemoryMetadata(_strangerKey)));
+        var refused = await McpClient(otherKeys, Token()).PostAsync("/mcp", JsonRpc("initialize", 1, InitializeParams()));
+        Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        Assert.StartsWith("Bearer error=\"invalid_token\"", refused.Headers.WwwAuthenticate.Single().ToString());
+    }
+
+    [Fact]
+    public async Task Through_entras_own_configuration_manager_an_unreachable_metadata_endpoint_is_503_not_401()
+    {
+        // Seen on the running host: the library swallows the failed fetch and reports "no signing key", which the handler must not pass off as invalid_token.
+        using var host = Host(RealManager(new HttpDocumentRetriever { RequireHttps = false }));   // keys.local resolves nowhere
+        using var client = McpClient(host, Token());
+        var response = await client.PostAsync("/mcp", JsonRpc("initialize", 1, InitializeParams()));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(TimeSpan.FromSeconds(EntraSignIn.RetryAfterSecondsOnUnavailable), response.Headers.RetryAfter!.Delta);
+        Assert.Empty(response.Headers.WwwAuthenticate);
+    }
+
     private sealed class FailingKeys : IConfigurationManager<OpenIdConnectConfiguration>
     {
         public Task<OpenIdConnectConfiguration> GetConfigurationAsync(CancellationToken cancel) => throw new InvalidOperationException("IDX20803: Unable to obtain configuration (simulated).");

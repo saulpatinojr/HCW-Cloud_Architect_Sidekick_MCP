@@ -27,7 +27,7 @@ public class AuthEndpointTests : IDisposable
 
     public void Dispose() => _idp.Dispose();
 
-    private TestHost Host(bool enabled = true) => new(s =>
+    private TestHost Host(bool enabled = true, Action<Dictionary<string, string?>>? configure = null) => new(s =>
     {
         s["Auth:Mode"] = "EntraBuiltIn";
         s["Auth:Tenants:0:Id"] = TestIdp.TenantId;
@@ -37,6 +37,7 @@ public class AuthEndpointTests : IDisposable
         s["Auth:Entra:ClientId"] = TestIdp.ServerClientId;
         s["Auth:Entra:AllowedClientIds:0"] = TestIdp.AllowedClientId;
         s["Auth:Entra:ResourceUri"] = TestIdp.ResourceUri;
+        configure?.Invoke(s);
     }, services =>
     {
         services.AddSingleton<IClock>(_idp.Clock);
@@ -107,6 +108,23 @@ public class AuthEndpointTests : IDisposable
         Assert.Equal(403, status);
         Assert.False(headers.ContainsKey("WWW-Authenticate"));
         Assert.Equal("forbidden", JsonNode.Parse(body)!["error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task An_application_token_reports_Reader_at_most_exactly_as_a_tool_call_would_grant()
+    {
+        // Found on the real host: the report claimed Admin for an application whose tool calls were (rightly) capped at Reader.
+        var host = Host(configure: s => s["Auth:Entra:AllowApplicationTokens"] = "true");
+        var claimsAdmin = TestIdp.Bearer(_idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray("Adr.Admin", "Adr.Author"); })));
+        var (status, body, _) = await Check(host, claimsAdmin);
+        Assert.Equal(200, status);
+        var json = JsonNode.Parse(body)!;
+        Assert.Equal(new[] { "Reader" }, json["roles"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Empty(json["scopes"]!.AsArray());
+        var pipeline = TestIdp.Bearer(_idp.Mint(_idp.Claims(c => { c.Remove("scp"); c["roles"] = new JsonArray(AdrMcp.Application.Options.AuthOptions.ApplicationReaderRole); })));
+        var (status2, body2, _) = await Check(host, pipeline);
+        Assert.Equal(200, status2);
+        Assert.Equal(new[] { "Reader" }, JsonNode.Parse(body2)!["roles"]!.AsArray().Select(n => n!.GetValue<string>()));
     }
 
     [Fact]

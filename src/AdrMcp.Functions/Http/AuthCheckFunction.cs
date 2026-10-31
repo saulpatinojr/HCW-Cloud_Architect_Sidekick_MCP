@@ -51,7 +51,8 @@ public sealed class AuthCheckFunction
         }
 
         var principal = result.Principal!;
-        var roles = EntraRoleMapper.Map(_auth, principal.Roles);
+        // The same mapping a tool call gets: an application (no delegated scope) is Reader at most, so the report never promises more than a call would allow.
+        var roles = EntraRoleMapper.Map(_auth, principal.Roles, isApplication: principal.Scopes.Count == 0);
         if (roles.Count == 0)
         {
             _logger.LogWarning("Sign-in check refused (no_role, HTTP 403)");

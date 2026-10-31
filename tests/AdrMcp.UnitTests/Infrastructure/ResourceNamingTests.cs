@@ -277,6 +277,15 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.App/managedEnvironments/storages" && r.Name == "cae-vault-dev-scus-01/vault");
     }
 
+    [Fact]
+    public void The_environment_links_its_storages_one_at_a_time()
+    {
+        // A first real provision failed with ManagedEnvironmentStorageLockConflict on the second and third links: the environment
+        // accepts one storage change at a time, and a copy loop deploys in parallel unless it is batched.
+        var module = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment.bicep"));
+        Assert.Matches(@"@batchSize\(1\)\s*\r?\nresource shares 'Microsoft\.App/managedEnvironments/storages@", module);
+    }
+
     [BicepFact]
     public async Task The_vault_server_starts_locked_mounts_the_share_read_only_and_keeps_shared_key_access_off()
     {

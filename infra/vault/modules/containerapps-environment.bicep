@@ -44,12 +44,15 @@ resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
 // Three mounts of two shares. The vault server only reads (ReadOnly); the headless Sync app writes the vault copy and keeps
 // its own login state on the second share (ReadWrite). ARM evaluates only the chosen branch of the condition, so no key is
 // read in ManagedIdentity mode.
+// @batchSize(1): the environment takes one storage change at a time. Deployed in parallel, the second and third links fail
+// with ManagedEnvironmentStorageLockConflict ("another modification is in progress"); one after the other, they succeed.
 var mounts = [
   { name: storageDefinitionName, share: shareName, access: 'ReadOnly' }
   { name: '${storageDefinitionName}-rw', share: shareName, access: 'ReadWrite' }
   { name: stateShareName, share: stateShareName, access: 'ReadWrite' }
 ]
 
+@batchSize(1)
 resource shares 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = [for m in mounts: {
   parent: environment
   name: m.name

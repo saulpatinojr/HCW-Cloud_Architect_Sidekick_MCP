@@ -79,10 +79,18 @@ public static class EntraSignIn
                 },
                 // A token the library refused keeps its own exception and becomes invalid_token below. Anything else that stopped the
                 // check (the key set could not be fetched, the request was aborted) is "could not decide", answered 503, never 500 or accept.
-                OnAuthenticationFailed = context =>
+                OnAuthenticationFailed = async context =>
                 {
-                    if (!IsTokenProblem(context.Exception)) context.Fail(new TokenRefusedException(TokenRefusal.KeysUnavailable));
-                    return Task.CompletedTask;
+                    if (!IsTokenProblem(context.Exception)) { context.Fail(new TokenRefusedException(TokenRefusal.KeysUnavailable)); return; }
+                    // With Entra's real configuration manager the library swallows a failed metadata fetch and reports "no signing key" (seen on
+                    // the running host). Ask the manager whether it holds a configuration at all: if it cannot produce one, the token could not
+                    // be decided, which is 503 with Retry-After, not a 401 that sends the client back to sign in during an outage.
+                    if (NamesNoKey(context.Exception) && context.Options.ConfigurationManager is { } manager)
+                    {
+                        try { await manager.GetConfigurationAsync(context.HttpContext.RequestAborted).ConfigureAwait(false); }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception) { context.Fail(new TokenRefusedException(TokenRefusal.KeysUnavailable)); }
+                    }
                 },
                 OnChallenge = context =>
                 {
@@ -130,6 +138,14 @@ public static class EntraSignIn
         var value = principal.FindFirst(c => c.Type == type)?.Value;
         return string.IsNullOrEmpty(value) ? null : value;
     }
+
+    /// <summary>"No signing key matched" from the library, which it also reports when the key set could not be fetched at all.</summary>
+    private static bool NamesNoKey(Exception exception) => exception switch
+    {
+        SecurityTokenSignatureKeyNotFoundException => true,
+        AggregateException aggregate => aggregate.InnerExceptions.Any(NamesNoKey),
+        _ => false,
+    };
 
     /// <summary>
     /// The library's own refusals (signature, issuer, audience, lifetime, algorithm, key) and our claim refusals, plus the argument and

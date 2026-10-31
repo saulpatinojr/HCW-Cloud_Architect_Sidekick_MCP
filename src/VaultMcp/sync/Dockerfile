@@ -2,7 +2,7 @@
 # Build:  docker build -t vault-sync src/VaultMcp/sync
 # Run:    docker run --rm -v "<copy>:/vault" -v "<state>:/state" -e OB_VAULT="My Vault" -e SYNC_EXCLUDE_SEED=Personal vault-sync
 # In Azure the two mounts are the file shares of the vault storage account and the settings come from the Container App.
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 # The headless client is an open beta; the version is pinned so a deploy never picks up a surprise.
 RUN npm install -g obsidian-headless@0.0.14 && npm cache clean --force \
     && groupadd --gid 1001 vaultsync && useradd --uid 1001 --gid 1001 --create-home --shell /usr/sbin/nologin vaultsync \

@@ -24,7 +24,7 @@
 .EXAMPLE
   .\scripts\setup-entra-signin.ps1
 .EXAMPLE
-  .\scripts\setup-entra-signin.ps1 -Vault -ResourceUri https://func-adr-dev-scus-01.azurewebsites.net/runtime/webhooks/mcp -VaultResourceUri https://ca-obsidian-dev-scus-01.example.southcentralus.azurecontainerapps.io/mcp
+  .\scripts\setup-entra-signin.ps1 -Vault -ResourceUri https://func-adr-dev-scus-01.azurewebsites.net/runtime/webhooks/mcp -VaultResourceUri https://ca-adrmcp-dev-scus-01.example.southcentralus.azurecontainerapps.io/mcp
 .EXAMPLE
   .\scripts\setup-entra-signin.ps1 -PipelineClientId <AZURE_CLIENT_ID> -PreauthorizeAzureCli
 #>

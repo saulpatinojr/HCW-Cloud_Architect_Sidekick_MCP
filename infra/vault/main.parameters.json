@@ -4,7 +4,7 @@
   "parameters": {
     "environmentName": { "value": "${AZURE_ENV_NAME}" },
     "location": { "value": "${AZURE_LOCATION}" },
-    "workloadName": { "value": "${VAULT_WORKLOAD_NAME=obsidian}" },
+    "workloadName": { "value": "${VAULT_WORKLOAD_NAME=adrmcp}" },
     "environmentShort": { "value": "${VAULT_ENVIRONMENT_SHORT=dev}" },
     "nameSuffix": { "value": "${VAULT_NAME_SUFFIX}" },
     "vaultExists": { "value": "${SERVICE_VAULT_RESOURCE_EXISTS=false}" },

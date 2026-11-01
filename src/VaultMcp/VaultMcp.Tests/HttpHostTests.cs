@@ -74,7 +74,7 @@ public sealed class HttpHostTests : IDisposable
             [VaultHostOptions.PathKey] = _vault.Root,
             [VaultHostOptions.ModeKey] = "Anonymous",
         }).Build();
-        var inAzure = Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(config, name => name == VaultHostOptions.ContainerAppsMarker ? "ca-obsidian-dev-scus-01" : null));
+        var inAzure = Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(config, name => name == VaultHostOptions.ContainerAppsMarker ? "ca-adrmcp-dev-scus-01" : null));
         Assert.Contains("Container Apps", inAzure.Message);
         Assert.Equal(VaultAccessMode.Anonymous, VaultHostOptions.From(config, _ => null).Mode);
 

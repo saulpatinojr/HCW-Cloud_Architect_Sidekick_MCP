@@ -253,7 +253,7 @@ public sealed class EntraSignInTests : IDisposable
         {
             (VaultHostOptions.PathKey, _vault.Root), (VaultHostOptions.ModeKey, "entra"),
             (VaultEntraOptions.TenantIdKey, Tenant), (VaultEntraOptions.ClientIdKey, ServerClient),
-            (VaultEntraOptions.AllowedClientIdsKey, AllowedClient), (VaultEntraOptions.ResourceUriKey, "https://ca-obsidian-dev-scus-01.example.azurecontainerapps.io/mcp/"),
+            (VaultEntraOptions.AllowedClientIdsKey, AllowedClient), (VaultEntraOptions.ResourceUriKey, "https://ca-adrmcp-dev-scus-01.example.azurecontainerapps.io/mcp/"),
         };
         var options = VaultHostOptions.From(Config(good), _ => null);
         Assert.Equal(VaultAccessMode.Entra, options.Mode);
@@ -261,8 +261,8 @@ public sealed class EntraSignInTests : IDisposable
         Assert.Equal(Tenant, entra.TenantId);
         Assert.Equal(new[] { AllowedClient }, entra.AllowedClientIds);
         Assert.Equal(VaultEntraOptions.DefaultRole, entra.RequiredRole);
-        Assert.Equal("https://ca-obsidian-dev-scus-01.example.azurecontainerapps.io/mcp", entra.ResourceUri);   // trailing slash dropped: the challenge and the metadata must agree
-        Assert.Equal("https://ca-obsidian-dev-scus-01.example.azurecontainerapps.io/.well-known/oauth-protected-resource/mcp", EntraSignIn.ResourceMetadataUrl(entra));
+        Assert.Equal("https://ca-adrmcp-dev-scus-01.example.azurecontainerapps.io/mcp", entra.ResourceUri);   // trailing slash dropped: the challenge and the metadata must agree
+        Assert.Equal("https://ca-adrmcp-dev-scus-01.example.azurecontainerapps.io/.well-known/oauth-protected-resource/mcp", EntraSignIn.ResourceMetadataUrl(entra));
         Assert.Equal(Issuer, entra.Issuer);
         Assert.Equal(ClientScope, entra.ClientScope);
 
@@ -271,15 +271,15 @@ public sealed class EntraSignInTests : IDisposable
         var inAzure = VaultHostOptions.From(Config(good.Where(p => p.Item1 != VaultEntraOptions.ResourceUriKey).ToArray()),
             name => name switch
             {
-                VaultHostOptions.ContainerAppsMarker => "CA-obsidian-dev-scus-01",
+                VaultHostOptions.ContainerAppsMarker => "CA-adrmcp-dev-scus-01",
                 VaultEntraOptions.ContainerAppsDnsSuffixMarker => "proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io",
-                "CONTAINER_APP_HOSTNAME" => "ca-obsidian-dev-scus-01--20mh1s9.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io",
+                "CONTAINER_APP_HOSTNAME" => "ca-adrmcp-dev-scus-01--20mh1s9.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io",
                 _ => null,
             });
-        Assert.Equal("https://ca-obsidian-dev-scus-01.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io/mcp", inAzure.Entra!.ResourceUri);
+        Assert.Equal("https://ca-adrmcp-dev-scus-01.proudsky-1a2b3c4d.southcentralus.azurecontainerapps.io/mcp", inAzure.Entra!.ResourceUri);
         // The name alone (no suffix) is not enough to build an address.
         var halfPlatform = Assert.Throws<InvalidOperationException>(() => VaultHostOptions.From(Config(good.Where(p => p.Item1 != VaultEntraOptions.ResourceUriKey).ToArray()),
-            name => name == VaultHostOptions.ContainerAppsMarker ? "ca-obsidian-dev-scus-01" : null));
+            name => name == VaultHostOptions.ContainerAppsMarker ? "ca-adrmcp-dev-scus-01" : null));
         Assert.Contains("ResourceUri", halfPlatform.Message);
 
         // Indexed children work too (Vault__Auth__Entra__AllowedClientIds__0).
@@ -296,7 +296,7 @@ public sealed class EntraSignInTests : IDisposable
             (VaultEntraOptions.AllowedClientIdsKey, null, "AllowedClientIds"),
             (VaultEntraOptions.AllowedClientIdsKey, AllowedClient + ",*", "AllowedClientIds entry 1"),
             (VaultEntraOptions.ResourceUriKey, null, "ResourceUri"),
-            (VaultEntraOptions.ResourceUriKey, "http://ca-obsidian-dev-scus-01.example.azurecontainerapps.io/mcp", "ResourceUri"),
+            (VaultEntraOptions.ResourceUriKey, "http://ca-adrmcp-dev-scus-01.example.azurecontainerapps.io/mcp", "ResourceUri"),
             (VaultEntraOptions.ResourceUriKey, "https://example.test/mcp?x=1", "ResourceUri"),
             (VaultEntraOptions.ResourceUriKey, "https://user:pw@example.test/mcp", "ResourceUri"),
             (VaultEntraOptions.RequiredRoleKey, "Vault Reader", "RequiredRole"),

@@ -1,0 +1,41 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { hasStoredLogin, tokenPath } from './login-state.mjs';
+import { OB_CONTRACT } from './ob-contract.mjs';
+
+const source = fs.readFileSync(new URL('./sync.mjs', import.meta.url), 'utf8');
+
+test('every ob call in sync.mjs uses only commands and options from the contract', () => {
+  const calls = [...source.matchAll(/\[\s*'(login|sync(?:-[a-z]+)?)'([^\]]*)\]/g)];
+  assert.ok(calls.length >= 6, `expected the sidecar's ob calls, found ${calls.length}`);
+  for (const [, command, rest] of calls) {
+    assert.ok(command in OB_CONTRACT, `ob ${command} is not in ob-contract.mjs`);
+    for (const [, option] of rest.matchAll(/'(--[a-z-]+)'/g)) assert.ok(OB_CONTRACT[command].includes(option), `ob ${command} ${option} is not in ob-contract.mjs`);
+  }
+  for (const [, pushed] of source.matchAll(/args\.push\(([^)]*)\)/g))
+    for (const [, option] of pushed.matchAll(/'(--[a-z-]+)'/g)) assert.ok(OB_CONTRACT['sync-setup'].includes(option), `ob sync-setup ${option} is not in ob-contract.mjs`);
+});
+
+test('the login check never runs ob login (it has no status mode and can prompt)', () => {
+  const body = source.slice(source.indexOf('function loggedIn('), source.indexOf('function login('));
+  assert.doesNotMatch(body, /ob\(/);
+  assert.match(body, /hasStoredLogin\(/);
+});
+
+test('a stored token file counts as logged in, an empty or missing one does not', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ob-login-'));
+  assert.equal(hasStoredLogin({}, home), false);
+  fs.mkdirSync(path.dirname(tokenPath(home)), { recursive: true });
+  fs.writeFileSync(tokenPath(home), '\n');
+  assert.equal(hasStoredLogin({}, home), false);
+  fs.writeFileSync(tokenPath(home), 'token-value');
+  assert.equal(hasStoredLogin({}, home), true);
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('OBSIDIAN_AUTH_TOKEN counts as logged in without a file', () => {
+  assert.equal(hasStoredLogin({ OBSIDIAN_AUTH_TOKEN: 'x' }, path.join(os.tmpdir(), 'no-such-dir')), true);
+});

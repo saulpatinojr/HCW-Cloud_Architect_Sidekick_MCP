@@ -9,7 +9,9 @@ RUN npm install -g obsidian-headless@0.0.14 && npm cache clean --force \
     && mkdir -p /vault /state && chown vaultsync:vaultsync /vault /state
 WORKDIR /app
 # Debian already has a system user called sync, hence the longer name; uid 1001 is what the Azure mounts use.
-COPY --chown=vaultsync:vaultsync package.json sync.mjs exclusions.mjs ./
+COPY --chown=vaultsync:vaultsync package.json sync.mjs exclusions.mjs login-state.mjs ob-contract.mjs check-cli.mjs ./
+# Fails the build if the pinned client does not accept an option the sidecar passes (ob-contract.mjs).
+RUN node /app/check-cli.mjs
 USER vaultsync
 # `ob` keeps its login under the home directory; the state share is mounted there so a restart does not log out.
 ENV HOME=/state \

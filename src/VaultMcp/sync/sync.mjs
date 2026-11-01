@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseAllowList, computeExclusions, parseSeed, toSyncArgument, FILE_NAME } from './exclusions.mjs';
+import { hasStoredLogin } from './login-state.mjs';
 
 const env = process.env;
 const vaultPath = env.VAULT_PATH || '/vault';
@@ -34,6 +35,7 @@ const prune = (env.SYNC_PRUNE || 'true').toLowerCase() !== 'false';
 const checkOnly = process.argv.includes('--check');
 const once = process.argv.includes('--once');
 const appliedFile = path.join(statePath, 'excluded-folders.txt');
+const configHome = path.join(statePath, '.config'); // where `ob` keeps its login: XDG_CONFIG_HOME for every call below
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 // True while the only thing missing is a sign-in by hand: the loop then polls at the normal interval instead of backing off, so a
@@ -45,7 +47,7 @@ const fail = (code, message) => { console.error(message); process.exit(code); };
 function ob(args, { secretArgs = [] } = {}) {
   const shown = args.map(a => (secretArgs.includes(a) ? '<secret>' : a)).join(' ');
   // input: '' closes stdin, so a prompt the --json flag did not suppress ends with an error instead of hanging the cycle.
-  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: `${statePath}/.config` }, timeout: 15 * 60 * 1000 });
+  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: configHome }, timeout: 15 * 60 * 1000 });
   if (result.error) return { ok: false, out: '', err: `ob could not start: ${result.error.message}`, shown };
   return { ok: result.status === 0, out: result.stdout ?? '', err: result.stderr ?? '', shown };
 }
@@ -53,7 +55,7 @@ function ob(args, { secretArgs = [] } = {}) {
 function checkConfiguration() {
   const problems = [];
   if (!env.OB_VAULT) problems.push('OB_VAULT is not set (the remote vault name or id).');
-  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: `${statePath}/.config` } }).error) problems.push('the ob command (obsidian-headless) is not installed.');
+  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: configHome } }).error) problems.push('the ob command (obsidian-headless) is not installed.');
   if (!fs.existsSync(vaultPath)) problems.push(`VAULT_PATH ${vaultPath} does not exist (mount the vault share there).`);
   if (!fs.existsSync(statePath)) problems.push(`STATE_PATH ${statePath} does not exist (mount the state share there).`);
   if ((env.OB_EMAIL ? 1 : 0) + (env.OB_PASSWORD ? 1 : 0) === 1) problems.push('OB_EMAIL and OB_PASSWORD must be set together or not at all.');
@@ -61,16 +63,15 @@ function checkConfiguration() {
 }
 
 function loggedIn() {
-  // `ob login` with no options prints the account when a login is stored; in --json mode it never prompts.
-  const r = ob(['login', '--json']);
-  return r.ok;
+  // Reads the stored token instead of running `ob login`, which has no status mode (see login-state.mjs).
+  return hasStoredLogin(env, configHome);
 }
 
 function login() {
   waitingForLogin = false;
   if (loggedIn()) return true;
   if (env.OB_EMAIL && env.OB_PASSWORD) {
-    const r = ob(['login', '--email', env.OB_EMAIL, '--password', env.OB_PASSWORD, '--json'], { secretArgs: [env.OB_EMAIL, env.OB_PASSWORD] });
+    const r = ob(['login', '--email', env.OB_EMAIL, '--password', env.OB_PASSWORD], { secretArgs: [env.OB_EMAIL, env.OB_PASSWORD] });
     if (r.ok) { log('logged in to Obsidian Sync with the account from Key Vault'); return true; }
     log('login failed:', r.err.trim().split('\n')[0] || '(no message)', '- if the account uses two-factor authentication, log in once by hand with az containerapp exec');
     return false;

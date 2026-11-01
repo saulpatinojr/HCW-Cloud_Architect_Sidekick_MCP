@@ -277,12 +277,12 @@ module containerApp './modules/containerapp.bicep' = {
   }
 }
 
-// Step 2 only: the two read-write links (the vault share for the sync app, and its state share). They are a separate module,
-// deployed after the server app, because the environment accepts one storage change at a time and holds the lock for a
-// while after each: the first provision of an environment failed with ManagedEnvironmentStorageLockConflict when the links
-// followed each other directly. The server app's deployment between the read-only link and these two gives the gap.
-module syncStorage './modules/containerapps-environment-sync-storage.bicep' = if (syncEnabled) {
-  name: 'sync-storage'
+// Step 2 only: the two read-write links (the vault share for the sync app, and its state share). Each is its own deployment,
+// one after the other and after the server app: the environment accepts one storage change at a time and holds the lock for a
+// while after each, and real provisions failed with ManagedEnvironmentStorageLockConflict whenever two links followed each
+// other inside one deployment, in parallel or in series. A deployment boundary between them is the gap the lock needs.
+module syncStorageVault './modules/containerapps-environment-storage-link.bicep' = if (syncEnabled) {
+  name: 'sync-storage-vault'
   scope: rg
   dependsOn: [ containerApp ]
   params: {
@@ -290,8 +290,23 @@ module syncStorage './modules/containerapps-environment-sync-storage.bicep' = if
     identityId: identity.outputs.id
     storageAccountName: storage.outputs.name
     shareName: storage.outputs.shareName
-    stateShareName: storage.outputs.stateShareName
-    storageDefinitionName: shareName
+    definitionName: '${shareName}-rw'
+    accessMode: 'ReadWrite'
+    shareAuth: shareAuth
+  }
+}
+
+module syncStorageState './modules/containerapps-environment-storage-link.bicep' = if (syncEnabled) {
+  name: 'sync-storage-state'
+  scope: rg
+  dependsOn: [ syncStorageVault ]
+  params: {
+    environmentName: environment.outputs.name
+    identityId: identity.outputs.id
+    storageAccountName: storage.outputs.name
+    shareName: storage.outputs.stateShareName
+    definitionName: stateShareName
+    accessMode: 'ReadWrite'
     shareAuth: shareAuth
   }
 }
@@ -299,7 +314,7 @@ module syncStorage './modules/containerapps-environment-sync-storage.bicep' = if
 module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
   name: 'containerapp-sync'
   scope: rg
-  dependsOn: [ syncStorage ]
+  dependsOn: [ syncStorageState ]
   params: {
     name: names.containerAppSync
     location: location
@@ -308,7 +323,7 @@ module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
     identityId: identity.outputs.id
     registryLoginServer: registry.outputs.loginServer
     currentImage: syncImage.?outputs.image ?? ''
-    vaultStorageDefinitionName: '${shareName}-rw'   // the names syncStorage creates (its outputs are not read: the module is conditional)
+    vaultStorageDefinitionName: '${shareName}-rw'   // the names the two link modules create (their outputs are not read: the modules are conditional)
     stateStorageDefinitionName: stateShareName
     keyVaultUri: keyVault.outputs.uri
     remoteVault: syncRemoteVault

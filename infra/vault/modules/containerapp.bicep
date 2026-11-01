@@ -3,16 +3,17 @@
 //
 // First `azd provision`: no image exists yet, so the app starts with Microsoft's ASP.NET Core sample image, which listens on the
 // same port 8080, under TCP probes on that port, so the placeholder revision is healthy. `azd deploy` then swaps in the real image,
-// which keeps working under the same TCP probes. Every later provision reads the image the app already runs (`exists`, fed by azd's
-// SERVICE_VAULT_RESOURCE_EXISTS) and keeps it, and switches to the HTTP probes on /health, which the sample image does not have.
+// which keeps working under the same TCP probes. Every later provision keeps the image the app already runs (currentImage, read by
+// fetch-container-image.bicep from azd's SERVICE_VAULT_RESOURCE_EXISTS) and switches to the HTTP probes on /health, which the
+// sample image does not have.
 param name string
 param location string
 param tags object
 param environmentId string
 param identityId string
 param registryLoginServer string
-@description('true when a container app of this name already exists in the resource group (azd sets SERVICE_VAULT_RESOURCE_EXISTS); its current image is then kept.')
-param exists bool
+@description('The image the app already runs (from fetch-container-image.bicep), kept as is; empty on the first provision, when the placeholder is used.')
+param currentImage string = ''
 param placeholderImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp' // listens on 8080 like VaultMcp.Http
 param containerName string = 'vault'
 param targetPort int = 8080
@@ -28,9 +29,7 @@ param entraRequiredRole string = 'Vault.Reader'
 @description('The canonical MCP URL (https://<fqdn>/mcp) the host puts in its challenges and metadata; built by the entry template.')
 param resourceUri string = ''
 
-resource existingApp 'Microsoft.App/containerApps@2025-07-01' existing = if (exists) { name: name }
-
-var image = exists ? existingApp!.properties.template.containers[0].image : placeholderImage
+var image = empty(currentImage) ? placeholderImage : currentImage
 var isPlaceholder = image == placeholderImage
 
 // Settings (the __ stands for :). None in Locked mode: with Vault__Auth__Mode unset the host stays Locked, and Anonymous would be

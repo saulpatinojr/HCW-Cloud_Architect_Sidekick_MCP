@@ -336,11 +336,16 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
         // With vaultExists=true the image comes from the running app (an expression here, because nothing is deployed offline), never from the template.
+        // It is read by a separate module: the first real second provision was refused as a circular dependency while the app module
+        // referenced the same app it deploys.
         var container = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps").Node["properties"]!["template"]!["containers"]![0]!;
         var image = container["image"]!.GetValue<string>();
         Assert.StartsWith("[", image);
-        Assert.Contains("containers[0].image", image);
+        Assert.Contains("containers[0].image", image);   // the snapshot inlines the fetch module's output as a reference to the running app
+        Assert.Matches(@"module vaultImage '\./modules/fetch-container-image\.bicep'", File.ReadAllText(Path.Join(Root, "infra", "vault", "main.bicep")));
         Assert.DoesNotContain("mcr.microsoft.com", image);
+        foreach (var module in new[] { "containerapp.bicep", "containerapp-sync.bicep" })
+            Assert.DoesNotContain("existing", File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", module)).Replace("exists", ""));   // no self-reference in the app modules
 
         foreach (var share in snapshot.Resources.Where(r => r.Type == "Microsoft.App/managedEnvironments/storages").Select(r => r.Node["properties"]!["azureFile"]!))
         {

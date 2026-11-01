@@ -240,6 +240,20 @@ module environment './modules/containerapps-environment.bicep' = {
   }
 }
 
+// The images the two apps already run, read in their own deployments (see the module): a template that both deploys an app and
+// references it is a circular dependency to ARM.
+module vaultImage './modules/fetch-container-image.bicep' = {
+  name: 'vault-image'
+  scope: rg
+  params: { exists: vaultExists, name: names.containerApp }
+}
+
+module syncImage './modules/fetch-container-image.bicep' = if (syncEnabled) {
+  name: 'sync-image'
+  scope: rg
+  params: { exists: syncExists, name: names.containerAppSync }
+}
+
 module containerApp './modules/containerapp.bicep' = {
   name: 'containerapp'
   scope: rg
@@ -250,7 +264,7 @@ module containerApp './modules/containerapp.bicep' = {
     environmentId: environment.outputs.id
     identityId: identity.outputs.id
     registryLoginServer: registry.outputs.loginServer
-    exists: vaultExists
+    currentImage: vaultImage.outputs.image
     storageDefinitionName: environment.outputs.storageDefinitionName
     authMode: authMode
     entraTenantId: entraTenantId
@@ -293,7 +307,7 @@ module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
     environmentId: environment.outputs.id
     identityId: identity.outputs.id
     registryLoginServer: registry.outputs.loginServer
-    exists: syncExists
+    currentImage: syncImage.?outputs.image ?? ''
     vaultStorageDefinitionName: '${shareName}-rw'   // the names syncStorage creates (its outputs are not read: the module is conditional)
     stateStorageDefinitionName: stateShareName
     keyVaultUri: keyVault.outputs.uri

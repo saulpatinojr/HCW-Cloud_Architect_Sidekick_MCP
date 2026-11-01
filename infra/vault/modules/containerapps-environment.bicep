@@ -9,8 +9,7 @@ param logAnalyticsWorkspaceId string
 param identityId string
 param storageAccountName string
 param shareName string
-param stateShareName string
-@description('Name of the read-only storage definition the vault server mounts; the read-write one for the sync app is <name>-rw, the state one is the state share name.')
+@description('Name of the read-only storage definition the vault server mounts. The sync app\'s read-write links are made by containerapps-environment-sync-storage.bicep, only when sync is on.')
 param storageDefinitionName string
 @allowed([ 'ManagedIdentity', 'AccountKey' ])
 param shareAuth string
@@ -41,31 +40,20 @@ resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   }
 }
 
-// Three mounts of two shares. The vault server only reads (ReadOnly); the headless Sync app writes the vault copy and keeps
-// its own login state on the second share (ReadWrite). ARM evaluates only the chosen branch of the condition, so no key is
-// read in ManagedIdentity mode.
-// @batchSize(1): the environment takes one storage change at a time. Deployed in parallel, the second and third links fail
-// with ManagedEnvironmentStorageLockConflict ("another modification is in progress"); one after the other, they succeed.
-var mounts = [
-  { name: storageDefinitionName, share: shareName, access: 'ReadOnly' }
-  { name: '${storageDefinitionName}-rw', share: shareName, access: 'ReadWrite' }
-  { name: stateShareName, share: stateShareName, access: 'ReadWrite' }
-]
-
-@batchSize(1)
-resource shares 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = [for m in mounts: {
+// The one link the vault server needs: the share, read-only. The environment accepts one storage change at a time (see
+// containerapps-environment-sync-storage.bicep for the sync app's two read-write links and the lock they ran into). ARM
+// evaluates only the chosen branch of the condition, so no key is read in ManagedIdentity mode.
+resource share 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = {
   parent: environment
-  name: m.name
+  name: storageDefinitionName
   properties: {
     azureFile: shareAuth == 'ManagedIdentity'
-      ? { accountName: storageAccountName, shareName: m.share, accessMode: m.access, identity: identityId }
-      : { accountName: storageAccountName, shareName: m.share, accessMode: m.access, accountKey: storageAccount.listKeys().keys[0].value }
+      ? { accountName: storageAccountName, shareName: shareName, accessMode: 'ReadOnly', identity: identityId }
+      : { accountName: storageAccountName, shareName: shareName, accessMode: 'ReadOnly', accountKey: storageAccount.listKeys().keys[0].value }
   }
-}]
+}
 
 output id string = environment.id
 output name string = environment.name
 output defaultDomain string = environment.properties.defaultDomain
-output storageDefinitionName string = shares[0].name
-output storageDefinitionNameReadWrite string = shares[1].name
-output stateStorageDefinitionName string = shares[2].name
+output storageDefinitionName string = share.name

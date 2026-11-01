@@ -36,6 +36,9 @@ const once = process.argv.includes('--once');
 const appliedFile = path.join(statePath, 'excluded-folders.txt');
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
+// True while the only thing missing is a sign-in by hand: the loop then polls at the normal interval instead of backing off, so a
+// login made with `az containerapp exec ... ob login` is picked up within one interval (a real first run waited five minutes).
+let waitingForLogin = false;
 const fail = (code, message) => { console.error(message); process.exit(code); };
 
 /** Runs `ob` with the given arguments; secrets are passed as arguments but never logged. */
@@ -64,6 +67,7 @@ function loggedIn() {
 }
 
 function login() {
+  waitingForLogin = false;
   if (loggedIn()) return true;
   if (env.OB_EMAIL && env.OB_PASSWORD) {
     const r = ob(['login', '--email', env.OB_EMAIL, '--password', env.OB_PASSWORD, '--json'], { secretArgs: [env.OB_EMAIL, env.OB_PASSWORD] });
@@ -72,6 +76,7 @@ function login() {
     return false;
   }
   log('not logged in and no OB_EMAIL/OB_PASSWORD: waiting. Log in once with: az containerapp exec --name <sync app> --resource-group <rg> --command "ob login"');
+  waitingForLogin = true;
   return false;
 }
 
@@ -164,5 +169,5 @@ for (;;) {
   let ok = false;
   try { ok = await cycle(); } catch (e) { log('cycle failed:', e.message); }
   if (once) process.exit(ok ? 0 : 1);
-  await sleep((ok ? interval : Math.min(interval * 5, 600)) * 1000);
+  await sleep((ok || waitingForLogin ? interval : Math.min(interval * 5, 600)) * 1000);
 }

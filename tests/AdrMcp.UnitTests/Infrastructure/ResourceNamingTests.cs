@@ -103,14 +103,14 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     {
         // The vault server has its own azd project (src/VaultMcp/azure.yaml) with its own variable names, so the two environments never share a setting.
         var parameters = Json("infra/vault/main.parameters.json")["parameters"]!;
-        Assert.Equal("${VAULT_WORKLOAD_NAME=vault}", parameters["workloadName"]!["value"]!.GetValue<string>());
+        Assert.Equal("${VAULT_WORKLOAD_NAME=adrmcp}", parameters["workloadName"]!["value"]!.GetValue<string>());
         Assert.Equal("${VAULT_ENVIRONMENT_SHORT=dev}", parameters["environmentShort"]!["value"]!.GetValue<string>());
         Assert.Equal("${VAULT_NAME_SUFFIX}", parameters["nameSuffix"]!["value"]!.GetValue<string>());
         Assert.Equal("${SERVICE_VAULT_RESOURCE_EXISTS=false}", parameters["vaultExists"]!["value"]!.GetValue<string>());   // azd sets it; the deployed image is kept
         Assert.Equal("${VAULT_DEPLOYER_PRINCIPAL_ID}", parameters["deployerPrincipalId"]!["value"]!.GetValue<string>());   // opt-in, never azd's own AZURE_PRINCIPAL_ID
 
         var bicep = File.ReadAllText(Path.Join(Root, "infra/vault/main.bicep"));
-        Assert.Contains("param workloadName string = 'vault'", bicep);
+        Assert.Contains("param workloadName string = 'adrmcp'", bicep);
         Assert.Contains("param environmentShort string = 'dev'", bicep);
         Assert.Contains("param nameSuffix string = ''", bicep);
 
@@ -244,7 +244,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Empty(Names(dev).Intersect(Names(prod)));
     }
 
-    // ---- The vault server's template, infra/vault/main.bicep (ADR-0010, workload 'vault') ----------------------------------------
+    // ---- The vault server's template, infra/vault/main.bicep (ADR-0010, workload 'adrmcp') ----------------------------------------
 
     [BicepTheory]
     [MemberData(nameof(Regions))]
@@ -253,7 +253,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get($"vault:region:{region}");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var problems = NamingChecks.Verify(snapshot.Resources, code, suffix: "", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        var problems = NamingChecks.Verify(snapshot.Resources, code, suffix: "", workload: "adrmcp", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
         Assert.True(problems.Count == 0, $"{region}:{Environment.NewLine}{string.Join(Environment.NewLine, problems)}");
     }
 
@@ -264,26 +264,29 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
         var byType = snapshot.Resources.Where(r => !r.Name.Contains('/') && !r.Name.StartsWith('[')).GroupBy(r => r.Type).ToDictionary(g => g.Key, g => g.Select(r => r.Name).OrderBy(n => n).ToArray());
-        Assert.Equal(new[] { "rg-vault-dev-scus-01" }, byType["Microsoft.Resources/resourceGroups"]);
-        Assert.Equal(new[] { "ca-vault-dev-scus-01" }, byType["Microsoft.App/containerApps"]);
-        Assert.Equal(new[] { "cae-vault-dev-scus-01" }, byType["Microsoft.App/managedEnvironments"]);
-        Assert.Equal(new[] { "crvaultdevscus01" }, byType["Microsoft.ContainerRegistry/registries"]);
-        Assert.Equal(new[] { "kv-vault-dev-scus-01" }, byType["Microsoft.KeyVault/vaults"]);
-        Assert.Equal(new[] { "stvaultdevscus01" }, byType["Microsoft.Storage/storageAccounts"]);
-        Assert.Equal(new[] { "log-vault-dev-scus-01" }, byType["Microsoft.OperationalInsights/workspaces"]);
-        Assert.Equal(new[] { "id-vault-dev-scus-01" }, byType["Microsoft.ManagedIdentity/userAssignedIdentities"]);
+        Assert.Equal(new[] { "rg-adrmcp-dev-scus-01" }, byType["Microsoft.Resources/resourceGroups"]);
+        Assert.Equal(new[] { "ca-adrmcp-dev-scus-01" }, byType["Microsoft.App/containerApps"]);
+        Assert.Equal(new[] { "cae-adrmcp-dev-scus-01" }, byType["Microsoft.App/managedEnvironments"]);
+        Assert.Equal(new[] { "cradrmcpdevscus01" }, byType["Microsoft.ContainerRegistry/registries"]);
+        Assert.Equal(new[] { "kv-adrmcp-dev-scus-01" }, byType["Microsoft.KeyVault/vaults"]);
+        Assert.Equal(new[] { "stadrmcpdevscus01" }, byType["Microsoft.Storage/storageAccounts"]);
+        Assert.Equal(new[] { "log-adrmcp-dev-scus-01" }, byType["Microsoft.OperationalInsights/workspaces"]);
+        Assert.Equal(new[] { "id-adrmcp-dev-scus-01" }, byType["Microsoft.ManagedIdentity/userAssignedIdentities"]);
         Assert.DoesNotContain("Microsoft.Insights/components", byType.Keys);   // no Application Insights: the host sends nothing to it
-        Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.Storage/storageAccounts/fileServices/shares" && r.Name == "stvaultdevscus01/default/vault");
-        Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.App/managedEnvironments/storages" && r.Name == "cae-vault-dev-scus-01/vault");
+        Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.Storage/storageAccounts/fileServices/shares" && r.Name == "stadrmcpdevscus01/default/vault");
+        Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.App/managedEnvironments/storages" && r.Name == "cae-adrmcp-dev-scus-01/vault");
     }
 
     [Fact]
     public void The_environment_links_its_storages_one_at_a_time()
     {
-        // A first real provision failed with ManagedEnvironmentStorageLockConflict on the second and third links: the environment
-        // accepts one storage change at a time, and a copy loop deploys in parallel unless it is batched.
-        var module = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment.bicep"));
+        // A first real provision failed with ManagedEnvironmentStorageLockConflict: the environment accepts one storage change at a
+        // time, and a copy loop deploys in parallel unless it is batched. The sync app's two links are batched, deployed only when
+        // sync is on, and after the server app (the gap the lock needs); the server's one link is the only one in the environment module.
+        var module = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment-sync-storage.bicep"));
         Assert.Matches(@"@batchSize\(1\)\s*\r?\nresource shares 'Microsoft\.App/managedEnvironments/storages@", module);
+        var main = File.ReadAllText(Path.Join(Root, "infra", "vault", "main.bicep"));
+        Assert.Matches(@"module syncStorage '\./modules/containerapps-environment-sync-storage\.bicep' = if \(syncEnabled\) \{\s*name: 'sync-storage'\s*scope: rg\s*dependsOn: \[ containerApp \]", main);
     }
 
     [BicepFact]
@@ -293,7 +296,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get("vault:region:southcentralus");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01").Node;
+        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-adrmcp-dev-scus-01").Node;
         var container = app["properties"]!["template"]!["containers"]![0]!;
         var env = container["env"]?.AsArray().Select(e => e!["name"]!.GetValue<string>()) ?? [];
         Assert.DoesNotContain("Vault__Auth__Mode", env);   // unset means Locked: 401 on /mcp until VAULT_AUTH_MODE=Entra is set (step 3)
@@ -304,10 +307,8 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Equal("Single", app["properties"]!["configuration"]!["activeRevisionsMode"]!.GetValue<string>());
 
         var mounts = snapshot.Resources.Where(r => r.Type == "Microsoft.App/managedEnvironments/storages").ToDictionary(r => r.Name[(r.Name.LastIndexOf('/') + 1)..], r => r.Node["properties"]!["azureFile"]!);
-        Assert.Equal(new[] { "syncstate", "vault", "vault-rw" }, mounts.Keys.OrderBy(k => k, StringComparer.Ordinal));
+        Assert.Equal(new[] { "vault" }, mounts.Keys);   // without sync, only the server's read-only link exists; no read-write definition is in the environment at all
         Assert.Equal("ReadOnly", mounts["vault"]["accessMode"]!.GetValue<string>());       // the server's mount
-        Assert.Equal("ReadWrite", mounts["vault-rw"]["accessMode"]!.GetValue<string>());   // the sync app's mount of the same share
-        Assert.Equal("ReadWrite", mounts["syncstate"]["accessMode"]!.GetValue<string>());
         Assert.All(mounts.Values, m => { Assert.Null(m["accountKey"]); Assert.NotNull(m["identity"]); });   // identity mounts by default
         Assert.Equal("vault", app["properties"]!["template"]!["volumes"]![0]!["storageName"]!.GetValue<string>());   // the server never gets the read-write one
         Assert.DoesNotContain(snapshot.Resources, r => r.Type == "Microsoft.App/containerApps" && r.Name.Contains("-sync-"));   // step 2 is off by default
@@ -335,11 +336,16 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
         // With vaultExists=true the image comes from the running app (an expression here, because nothing is deployed offline), never from the template.
+        // It is read by a separate module: the first real second provision was refused as a circular dependency while the app module
+        // referenced the same app it deploys.
         var container = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps").Node["properties"]!["template"]!["containers"]![0]!;
         var image = container["image"]!.GetValue<string>();
         Assert.StartsWith("[", image);
-        Assert.Contains("containers[0].image", image);
+        Assert.Contains("containers[0].image", image);   // the snapshot inlines the fetch module's output as a reference to the running app
+        Assert.Matches(@"module vaultImage '\./modules/fetch-container-image\.bicep'", File.ReadAllText(Path.Join(Root, "infra", "vault", "main.bicep")));
         Assert.DoesNotContain("mcr.microsoft.com", image);
+        foreach (var module in new[] { "containerapp.bicep", "containerapp-sync.bicep" })
+            Assert.DoesNotContain("existing", File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", module)).Replace("exists", ""));   // no self-reference in the app modules
 
         foreach (var share in snapshot.Resources.Where(r => r.Type == "Microsoft.App/managedEnvironments/storages").Select(r => r.Node["properties"]!["azureFile"]!))
         {
@@ -359,11 +365,11 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get("vault:sync");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "adrmcp", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
-        Assert.Equal(new[] { "ca-vault-dev-scus-01", "ca-vault-sync-dev-scus-01" }, snapshot.Resources.Where(r => r.Type == "Microsoft.App/containerApps").Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.Equal(new[] { "ca-adrmcp-dev-scus-01", "ca-adrmcp-sync-dev-scus-01" }, snapshot.Resources.Where(r => r.Type == "Microsoft.App/containerApps").Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal));
 
-        var sync = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-sync-dev-scus-01");
+        var sync = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-adrmcp-sync-dev-scus-01");
         Assert.Equal("sync", sync.Tags["azd-service-name"]);
         var configuration = sync.Node["properties"]!["configuration"]!;
         Assert.Null(configuration["ingress"]);   // nothing reaches it from outside
@@ -385,7 +391,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Equal(1, sync.Node["properties"]!["template"]!["scale"]!["maxReplicas"]!.GetValue<int>());   // one writer
 
         // The server still mounts the read-only definition in the same deployment.
-        var server = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01");
+        var server = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-adrmcp-dev-scus-01");
         Assert.Equal("vault", server.Node["properties"]!["template"]!["volumes"]![0]!["storageName"]!.GetValue<string>());
     }
 
@@ -395,10 +401,10 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         // ADR-0010 phase 2, step 3: the only change to the template is the settings on the server app; nothing else moves.
         var snapshot = await _bicep.Get("vault:entra");
         Assert.True(snapshot.Succeeded, snapshot.Output);
-        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "", workload: "adrmcp", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
 
-        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-vault-dev-scus-01").Node;
+        var app = snapshot.Resources.Single(r => r.Type == "Microsoft.App/containerApps" && r.Name == "ca-adrmcp-dev-scus-01").Node;
         var env = app["properties"]!["template"]!["containers"]![0]!["env"]!.AsArray().ToDictionary(e => e!["name"]!.GetValue<string>(), e => e!["value"]!.GetValue<string>());
         Assert.Equal("Entra", env["Vault__Auth__Mode"]);
         Assert.Equal("66666666-7777-8888-9999-aaaaaaaaaaaa", env["Vault__Auth__Entra__ClientId"]);
@@ -407,7 +413,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         Assert.Contains("tenant()", env["Vault__Auth__Entra__TenantId"]);   // the deploying tenant by default (an expression offline)
         // The canonical MCP URL is built from the app's own name and the environment's domain, known before the app exists
         // (an expression offline, because the domain is read from the environment resource).
-        Assert.Matches(@"^\[format\('https://\{0\}\.\{1\}/mcp', 'ca-vault-dev-scus-01', .*\)\]$", env["Vault__Auth__Entra__ResourceUri"]);
+        Assert.Matches(@"^\[format\('https://\{0\}\.\{1\}/mcp', 'ca-adrmcp-dev-scus-01', .*\)\]$", env["Vault__Auth__Entra__ResourceUri"]);
         Assert.DoesNotContain(env.Keys, k => k.Contains("Secret", StringComparison.OrdinalIgnoreCase));   // ids only; no secret exists for this flow
         Assert.Empty(app["properties"]!["configuration"]!["secrets"]?.AsArray() ?? []);
     }
@@ -418,7 +424,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get("vault:suffix");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "b", workload: "vault", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        var problems = NamingChecks.Verify(snapshot.Resources, "scus", suffix: "b", workload: "adrmcp", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
 
         var globalTypes = new[] { "Microsoft.ContainerRegistry/registries", "Microsoft.KeyVault/vaults", "Microsoft.Storage/storageAccounts" };
@@ -435,7 +441,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get("vault:long:westcentralus");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var problems = NamingChecks.Verify(snapshot.Resources, "wcus", suffix: "b", workload: "vaultmc", environment: "prod", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
+        var problems = NamingChecks.Verify(snapshot.Resources, "wcus", suffix: "b", workload: "adrmcpx", environment: "prod", application: "vault-mcp", required: NamingChecks.VaultRequiredTypes);
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
         Assert.Contains(snapshot.Resources, r => r.Type == "Microsoft.KeyVault/vaults" && r.Name.Length == 24);
     }
@@ -444,8 +450,8 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [InlineData("location", "has no short code")]
     [InlineData("environmentName", "must end with")]
     [InlineData("keyvault-length", "longer than the 24 characters")]
-    [InlineData("reserved-workload", "must start with \"vault\"")]
-    [InlineData("custom-workload", "must start with \"vault\"")]
+    [InlineData("reserved-workload", "must start with \"adrmcp\"")]
+    [InlineData("custom-workload", "must start with \"adrmcp\"")]
     [InlineData("sync-vault", "VAULT_SYNC_REMOTE_VAULT")]
     [InlineData("entra-client", "VAULT_ENTRA_CLIENT_ID")]
     [InlineData("entra-allowed", "VAULT_ENTRA_ALLOWED_CLIENT_IDS")]
@@ -505,7 +511,7 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
         var snapshot = await _bicep.Get($"long:{region}");
         Assert.True(snapshot.Succeeded, snapshot.Output);
 
-        var problems = NamingChecks.Verify(snapshot.Resources, code, suffix: "b", workload: "adrmcp", environment: "prod");
+        var problems = NamingChecks.Verify(snapshot.Resources, code, suffix: "b", workload: "adrsvc", environment: "prod");
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 }
@@ -766,7 +772,7 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["group-override"] = Parameters("southcentralus", ("resourceGroupName", Quote("rg-custom")));
         scenarios["spaced-region"] = Parameters("South Central US");
         foreach (var region in new[] { "westcentralus", "northcentralus" })   // the longest region codes (4 characters)
-            scenarios[$"long:{region}"] = InEnvironment("prod", Parameters(region, ("enablePrivateNetworking", "true"), ("workloadName", Quote("adrmcp")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));
+            scenarios[$"long:{region}"] = InEnvironment("prod", Parameters(region, ("enablePrivateNetworking", "true"), ("workloadName", Quote("adrsvc")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));
         scenarios["second-environment"] = InEnvironment("prod", Parameters("southcentralus", ("enablePrivateNetworking", "true"), ("environmentShort", Quote("prod"))));
         scenarios["reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));   // azd environment ends with -prod but environmentShort stays dev
         scenarios["reject:location"] = Parameters("brazilsouth");
@@ -774,11 +780,11 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["reject:environmentShort"] = Parameters("southcentralus", ("environmentShort", Quote("de_v")));
         scenarios["reject:nameSuffix"] = Parameters("southcentralus", ("nameSuffix", Quote("b-")));
         scenarios["reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("abcdefgh")), ("nameSuffix", Quote("abcd")));   // kv-abcdefgh-dev-scus-01abcd = 27 characters
-        scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("vault")));   // the vault server's workload
+        scenarios["reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("adrmcp")));   // the vault server's workload
         scenarios["entra-pipeline"] = Parameters("southcentralus", ("authMode", Quote("EntraBuiltIn")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")), ("entraValidateInApp", "true"), ("entraPipelineClientId", Quote("dddddddd-eeee-ffff-0000-111111111111")));   // the deploy identity may read (made-up ids)
         scenarios["reject:pipeline-without-entra"] = Parameters("southcentralus", ("entraPipelineClientId", Quote("dddddddd-eeee-ffff-0000-111111111111")));   // FunctionKey mode has no application sign-in
-        scenarios["reject:reserved-workload-prefix"] = Parameters("southcentralus", ("workloadName", Quote("vaultx")));   // the whole prefix is reserved, not one word
-        scenarios["reject:reserved-workload-prefix-of-vault"] = InEnvironment("tdev", Parameters("southcentralus", ("workloadName", Quote("vaul")), ("environmentShort", Quote("tdev"))));   // vaul + tdev would spell stvaultdevscus01
+        scenarios["reject:reserved-workload-prefix"] = Parameters("southcentralus", ("workloadName", Quote("adrmcp2")));   // the whole prefix is reserved, not one word
+        scenarios["reject:reserved-workload-prefix-of-vault"] = InEnvironment("mcpde", Parameters("southcentralus", ("workloadName", Quote("adr")), ("environmentShort", Quote("mcpde"))));   // adr + mcpde would spell stadrmcpdescus01, the vault server's name with environment "de"
 
         // The vault server's template (ADR-0010): the same guards, its own names. Its defaults are workloadName 'vault' and environmentShort 'dev'.
         foreach (var region in regions) scenarios[$"vault:region:{region}"] = Parameters(region);
@@ -789,12 +795,12 @@ public sealed class BicepSnapshotFixture : IDisposable
         scenarios["vault:entra"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff,cccccccc-dddd-eeee-ffff-000000000000")));   // step 3: sign-in on (made-up ids)
         scenarios["vault:reject:entra-client"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraAllowedClientIds", Quote("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")));   // sign-in on without the server app's client id
         scenarios["vault:reject:entra-allowed"] = Parameters("southcentralus", ("authMode", Quote("Entra")), ("entraClientId", Quote("66666666-7777-8888-9999-aaaaaaaaaaaa")));   // sign-in on without an allowed client
-        scenarios["vault:long:westcentralus"] = InEnvironment("prod", Parameters("westcentralus", ("workloadName", Quote("vaultmc")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));   // kv-vaultmc-prod-wcus-01b = 24
+        scenarios["vault:long:westcentralus"] = InEnvironment("prod", Parameters("westcentralus", ("workloadName", Quote("adrmcpx")), ("environmentShort", Quote("prod")), ("nameSuffix", Quote("b"))));   // kv-adrmcpx-prod-wcus-01b = 24
         scenarios["vault:reject:location"] = Parameters("brazilsouth");
         scenarios["vault:reject:environmentName"] = InEnvironment("prod", Parameters("southcentralus"));
-        scenarios["vault:reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("vaultabc")), ("nameSuffix", Quote("abcd")));   // kv-vaultabc-dev-scus-01abcd = 27 characters, with the required prefix
+        scenarios["vault:reject:keyvault-length"] = Parameters("southcentralus", ("workloadName", Quote("adrmcpabcd")), ("nameSuffix", Quote("abcd")));   // kv-adrmcpabcd-dev-scus-01abcd = 29 characters, with the required prefix
         scenarios["vault:reject:reserved-workload"] = Parameters("southcentralus", ("workloadName", Quote("adr")));   // would take the ADR server's names
-        scenarios["vault:reject:custom-workload"] = Parameters("southcentralus", ("workloadName", Quote("team")));   // any name without the vault prefix could collide with a custom ADR_WORKLOAD_NAME
+        scenarios["vault:reject:custom-workload"] = Parameters("southcentralus", ("workloadName", Quote("team")));   // any name without the adrmcp prefix could collide with a custom ADR_WORKLOAD_NAME
 
         return scenarios.ToDictionary(s => s.Key, s => Task.Run(() => RunAsync(s.Key.StartsWith("vault:", StringComparison.Ordinal) ? VaultTemplate : AdrTemplate, s.Value)));
     }

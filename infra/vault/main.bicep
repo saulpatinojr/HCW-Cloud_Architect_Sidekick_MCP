@@ -19,9 +19,9 @@ param environmentName string
 param location string
 
 @minLength(2)
-@maxLength(8)
-@description('Short workload name used in every resource name: lower-case letters and digits only, starting with "vault" (ADR-0009; the ADR server\'s template refuses names that start with vault, so the two can never collide).')
-param workloadName string = 'vault'
+@maxLength(10)
+@description('Short workload name used in every resource name: lower-case letters and digits only, starting with "adrmcp" (ADR-0009; the ADR server\'s template refuses names that begin with adrmcp, so the two can never collide).')
+param workloadName string = 'adrmcp'
 
 @minLength(2)
 @maxLength(5)
@@ -114,8 +114,8 @@ var nameProblem = empty(regionCode)
   ? 'Region "${location}" has no short code. Add it to infra/region-codes.json and to the region table in docs/adr/ADR-0009-azure-naming-convention.md, then deploy again.'
   : !(isLowerAlphanumeric(workloadName) && isLowerAlphanumeric(environmentShort) && isLowerAlphanumeric(nameSuffix))
     ? 'workloadName, environmentShort and nameSuffix may hold lower-case letters and digits only (ADR-0009).'
-    : !startsWith(workloadName, 'vault')
-      ? 'workloadName "${workloadName}" must start with "vault" (ADR-0009): the ADR server (infra/main.bicep) refuses such names, so the two deployments can never share a resource group or a global name. Set VAULT_WORKLOAD_NAME to vault, or to vault followed by letters or digits.'
+    : !startsWith(workloadName, 'adrmcp')
+      ? 'workloadName "${workloadName}" must start with "adrmcp" (ADR-0009): the ADR server (infra/main.bicep) refuses such names, so the two deployments can never share a resource group or a global name. Set VAULT_WORKLOAD_NAME to adrmcp, or to adrmcp followed by letters or digits.'
     : !(environmentName == environmentShort || endsWith(environmentName, '-${environmentShort}'))
       ? 'environmentName "${environmentName}" must end with "-${environmentShort}". The azd environment name is not part of any resource name, so two azd environments in one subscription and region with the same environmentShort would get the same names and overwrite each other. Name the azd environment vault-<short> (for example vault-prod) and set VAULT_ENVIRONMENT_SHORT to <short> for it (ADR-0009).'
       : length(keyVaultName) > 24
@@ -140,7 +140,7 @@ var names = !empty(nameProblem)
     containerAppSync: '${abbrs.appContainerApps}-${workloadName}-sync-${nameTail}'   // component "sync" (ADR-0009 decision 1)
   }
 
-// Data names (not Azure resource names, ADR-0009 decision 8).
+// Data names (not Azure resource names, ADR-0009 decision 8). The share keeps Obsidian's own word for a vault.
 var shareName = 'vault'          // the file share and the environment's read-only storage definition (read-write: vault-rw)
 var stateShareName = 'syncstate' // the Sync client's own state (login), mounted by the sync app only
 var azdServiceName = 'vault'     // the service in src/VaultMcp/azure.yaml; azd finds the container app by this tag
@@ -235,10 +235,23 @@ module environment './modules/containerapps-environment.bicep' = {
     identityId: identity.outputs.id
     storageAccountName: storage.outputs.name
     shareName: storage.outputs.shareName
-    stateShareName: storage.outputs.stateShareName
     storageDefinitionName: shareName
     shareAuth: shareAuth
   }
+}
+
+// The images the two apps already run, read in their own deployments (see the module): a template that both deploys an app and
+// references it is a circular dependency to ARM.
+module vaultImage './modules/fetch-container-image.bicep' = {
+  name: 'vault-image'
+  scope: rg
+  params: { exists: vaultExists, name: names.containerApp }
+}
+
+module syncImage './modules/fetch-container-image.bicep' = if (syncEnabled) {
+  name: 'sync-image'
+  scope: rg
+  params: { exists: syncExists, name: names.containerAppSync }
 }
 
 module containerApp './modules/containerapp.bicep' = {
@@ -251,7 +264,7 @@ module containerApp './modules/containerapp.bicep' = {
     environmentId: environment.outputs.id
     identityId: identity.outputs.id
     registryLoginServer: registry.outputs.loginServer
-    exists: vaultExists
+    currentImage: vaultImage.outputs.image
     storageDefinitionName: environment.outputs.storageDefinitionName
     authMode: authMode
     entraTenantId: entraTenantId
@@ -264,9 +277,29 @@ module containerApp './modules/containerapp.bicep' = {
   }
 }
 
+// Step 2 only: the two read-write links (the vault share for the sync app, and its state share). They are a separate module,
+// deployed after the server app, because the environment accepts one storage change at a time and holds the lock for a
+// while after each: the first provision of an environment failed with ManagedEnvironmentStorageLockConflict when the links
+// followed each other directly. The server app's deployment between the read-only link and these two gives the gap.
+module syncStorage './modules/containerapps-environment-sync-storage.bicep' = if (syncEnabled) {
+  name: 'sync-storage'
+  scope: rg
+  dependsOn: [ containerApp ]
+  params: {
+    environmentName: environment.outputs.name
+    identityId: identity.outputs.id
+    storageAccountName: storage.outputs.name
+    shareName: storage.outputs.shareName
+    stateShareName: storage.outputs.stateShareName
+    storageDefinitionName: shareName
+    shareAuth: shareAuth
+  }
+}
+
 module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
   name: 'containerapp-sync'
   scope: rg
+  dependsOn: [ syncStorage ]
   params: {
     name: names.containerAppSync
     location: location
@@ -274,9 +307,9 @@ module containerAppSync './modules/containerapp-sync.bicep' = if (syncEnabled) {
     environmentId: environment.outputs.id
     identityId: identity.outputs.id
     registryLoginServer: registry.outputs.loginServer
-    exists: syncExists
-    vaultStorageDefinitionName: environment.outputs.storageDefinitionNameReadWrite
-    stateStorageDefinitionName: environment.outputs.stateStorageDefinitionName
+    currentImage: syncImage.?outputs.image ?? ''
+    vaultStorageDefinitionName: '${shareName}-rw'   // the names syncStorage creates (its outputs are not read: the module is conditional)
+    stateStorageDefinitionName: stateShareName
     keyVaultUri: keyVault.outputs.uri
     remoteVault: syncRemoteVault
     excludeSeed: syncExcludeSeed

@@ -10,8 +10,8 @@ param tags object
 param environmentId string
 param identityId string
 param registryLoginServer string
-@description('true when the app already exists (azd sets SERVICE_SYNC_RESOURCE_EXISTS); its current image is then kept.')
-param exists bool
+@description('The image the app already runs (from fetch-container-image.bicep), kept as is; empty on the first provision, when the placeholder is used.')
+param currentImage string = ''
 param placeholderImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp' // any image that keeps running; nothing probes it
 param containerName string = 'sync'
 @description('Storage definition names in the environment: the vault share read-write, and the state share.')
@@ -29,9 +29,7 @@ param vaultEncrypted bool = true
 @description('true: log in with the secrets obsidian-email and obsidian-password from Key Vault. false: log in once by hand with az containerapp exec.')
 param loginFromKeyVault bool = false
 
-resource existingApp 'Microsoft.App/containerApps@2025-07-01' existing = if (exists) { name: name }
-
-var image = exists ? existingApp!.properties.template.containers[0].image : placeholderImage
+var image = empty(currentImage) ? placeholderImage : currentImage
 
 // Key Vault references: the app's identity reads the secret at start; nothing is copied into the template or its outputs.
 var vaultPasswordSecret = vaultEncrypted ? [ { name: 'obsidian-vault-password', keyVaultUrl: '${keyVaultUri}secrets/obsidian-vault-password', identity: identityId } ] : []

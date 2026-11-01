@@ -108,17 +108,17 @@ The image runs as the non-root `app` user on port 8080 and never writes to `/vau
 
 ## Deploy the HTTP host to Azure (phase 2, step 1b)
 
-The vault server has its own azd project (`src/VaultMcp/azure.yaml`) and its own template (`infra/vault/main.bicep`), separate from the ADR server's at the repository root. One `azd provision` creates one resource group with [ADR-0009](../../docs/adr/ADR-0009-azure-naming-convention.md) names, workload `vault`:
+The vault server has its own azd project (`src/VaultMcp/azure.yaml`) and its own template (`infra/vault/main.bicep`), separate from the ADR server's at the repository root. One `azd provision` creates one resource group with [ADR-0009](../../docs/adr/ADR-0009-azure-naming-convention.md) names, workload `adrmcp` (the product both servers belong to, the ADR MCP server; `vault` is Obsidian's word for a folder of notes and Azure's word for Key Vault, so it names no workload):
 
 | Resource | Name (defaults, South Central US) | Job |
 |---|---|---|
-| Resource group | `rg-vault-dev-scus-01` | holds everything below |
-| Container app | `ca-vault-dev-scus-01` | the HTTP host: one replica, HTTPS on the internet, **Locked** (401 on `/mcp`) until you turn the sign-in on in step 3 |
-| Container Apps environment | `cae-vault-dev-scus-01` | runs it; mounts the share read-only with its managed identity |
-| Container registry | `crvaultdevscus01` | holds the image; `azd deploy` builds it there, so you need no Docker |
-| Storage account, file shares | `stvaultdevscus01`, shares `vault` and `syncstate` | the synced copy of the allow-listed folders (written by step 2), and the Sync client's own state |
-| Key Vault | `kv-vault-dev-scus-01` | the step 2 secrets (vault password, optionally the Sync sign-in), put there by you |
-| Log Analytics, managed identity | `log-vault-dev-scus-01`, `id-vault-dev-scus-01` | logs; the identity that pulls the image, mounts the share and reads Key Vault |
+| Resource group | `rg-adrmcp-dev-scus-01` | holds everything below |
+| Container app | `ca-adrmcp-dev-scus-01` | the HTTP host: one replica, HTTPS on the internet, **Locked** (401 on `/mcp`) until you turn the sign-in on in step 3 |
+| Container Apps environment | `cae-adrmcp-dev-scus-01` | runs it; mounts the share read-only with its managed identity |
+| Container registry | `cradrmcpdevscus01` | holds the image; `azd deploy` builds it there, so you need no Docker |
+| Storage account, file shares | `stadrmcpdevscus01`, shares `vault` and `syncstate` | the synced copy of the allow-listed folders (written by step 2), and the Sync client's own state |
+| Key Vault | `kv-adrmcp-dev-scus-01` | the step 2 secrets (vault password, optionally the Sync sign-in), put there by you |
+| Log Analytics, managed identity | `log-adrmcp-dev-scus-01`, `id-adrmcp-dev-scus-01` | logs; the identity that pulls the image, mounts the share and reads Key Vault |
 
 No key, connection string or secret appears in the template or its outputs: the image is pulled and the share is mounted with the identity (the share mount uses "Managed Identity for SMB", a preview feature; `azd env set VAULT_SHARE_AUTH AccountKey` is the fallback if your region does not have it yet, and it is the only setting that turns shared-key access on for that storage account).
 
@@ -136,7 +136,7 @@ Settings (`azd env set NAME VALUE`, all optional):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT` | `vault`, `dev` | the words in every resource name (ADR-0009); the workload name must start with `vault` (the ADR server's template refuses such names, so the two can never share a resource); the azd environment name must end with `-<VAULT_ENVIRONMENT_SHORT>` |
+| `VAULT_WORKLOAD_NAME`, `VAULT_ENVIRONMENT_SHORT` | `adrmcp`, `dev` | the words in every resource name (ADR-0009); the workload name must start with `adrmcp` (the ADR server's template refuses such names, so the two can never share a resource); the azd environment name must end with `-<VAULT_ENVIRONMENT_SHORT>` |
 | `VAULT_NAME_SUFFIX` | empty | appended to the three globally unique names (registry, Key Vault, storage account) when one is taken, for example a Key Vault still soft-deleted |
 | `VAULT_SHARE_AUTH` | `ManagedIdentity` | `AccountKey` only as the fallback described above |
 | `VAULT_SHARE_QUOTA_GIB` | `5` | size limit of the share |
@@ -146,13 +146,13 @@ To undo: `azd down` from the same folder deletes the resource group. The Key Vau
 
 ## Sync the vault into Azure (phase 2, step 2)
 
-The HTTP host reads a copy of your allow-listed folders from the file share. Step 2 fills that share: a second, always-on container app, `ca-vault-sync-dev-scus-01`, runs Obsidian's own headless Sync client (`obsidian-headless`, the `ob` command, an open beta that needs an Obsidian Sync subscription) in **pull-only** mode. It is the same end-to-end encryption as the desktop app, so the container needs your Sync sign-in and the vault's encryption password; both live in the Key Vault the template created and reach the container as secret references, never as settings. The code is in [`sync/`](sync/): `sync.mjs` wraps `ob`, `exclusions.mjs` turns the `allow:` list of `adr-sidekick.md` into Sync's exclusion list (Sync can only exclude folders, so every folder whose subtree holds no allow-listed folder is excluded at the shallowest level), and after each cycle it deletes local copies of folders that are now excluded. It never serves anything and never pushes to Sync.
+The HTTP host reads a copy of your allow-listed folders from the file share. Step 2 fills that share: a second, always-on container app, `ca-adrmcp-sync-dev-scus-01`, runs Obsidian's own headless Sync client (`obsidian-headless`, the `ob` command, an open beta that needs an Obsidian Sync subscription) in **pull-only** mode. It is the same end-to-end encryption as the desktop app, so the container needs your Sync sign-in and the vault's encryption password; both live in the Key Vault the template created and reach the container as secret references, never as settings. The code is in [`sync/`](sync/): `sync.mjs` wraps `ob`, `exclusions.mjs` turns the `allow:` list of `adr-sidekick.md` into Sync's exclusion list (Sync can only exclude folders, so every folder whose subtree holds no allow-listed folder is excluded at the shallowest level), and after each cycle it deletes local copies of folders that are now excluded. It never serves anything and never pushes to Sync.
 
 **Fails closed:** until `adr-sidekick.md` has been synced, the container has no allow-list to derive exclusions from, and an empty exclusion list would pull your whole vault. So the first run needs `VAULT_SYNC_EXCLUDE_SEED`, the top-level folders that must stay private; without it the container logs a refusal every cycle and syncs nothing. After the first sync the note takes over. Root-level notes (outside any folder) are synced but the server never serves them; keep notes in folders. Obsidian configuration, plugins and attachments are not synced (`--configs ""`, `--file-types ""`).
 
 **You need:** step 1b provisioned, an Obsidian Sync subscription, the name of the remote vault (`ob sync-list-remote` on your machine shows it, or Settings → Sync in the app), and the vault's end-to-end encryption password. Reference: [Obsidian Headless](https://obsidian.md/help/sync/headless).
 
-1. Put the secrets into Key Vault, from a terminal signed in with `az login` (you need Key Vault Secrets Officer on `kv-vault-dev-scus-01`: step 3 of the deploy section, `VAULT_DEPLOYER_PRINCIPAL_ID`). Type each value into a private file so it never lands in your shell history, then delete the file:
+1. Put the secrets into Key Vault, from a terminal signed in with `az login` (you need Key Vault Secrets Officer on `kv-adrmcp-dev-scus-01`: step 3 of the deploy section, `VAULT_DEPLOYER_PRINCIPAL_ID`). Type each value into a private file so it never lands in your shell history, then delete the file:
    ```bash
    KV=$(cd src/VaultMcp && azd env get-value AZURE_KEY_VAULT_NAME)
    read -rs -p "vault password: " P; printf '%s' "$P" > /tmp/s; unset P
@@ -161,7 +161,7 @@ The HTTP host reads a copy of your allow-listed folders from the file share. Ste
    Expect a line with the secret id on success, and nothing else. For a vault with standard (not end-to-end) encryption, skip the password and run `azd env set VAULT_SYNC_VAULT_ENCRYPTED false` instead.
 2. Choose how the container signs in to Obsidian Sync. **Recommended: by hand, once.** Skip this step; the container waits for you (step 6). Alternative, for an Obsidian account **without** two-factor authentication: repeat step 1 for `obsidian-email` and `obsidian-password`, then `azd env set VAULT_SYNC_LOGIN_FROM_KEY_VAULT true`.
 3. In `src/VaultMcp`: `azd env set VAULT_SYNC_ENABLED true`, `azd env set VAULT_SYNC_REMOTE_VAULT "<remote vault name>"`, `azd env set VAULT_SYNC_EXCLUDE_SEED "<private top-level folders, comma-separated>"`.
-4. Run `azd provision`. Expect the new app `ca-vault-sync-dev-scus-01` in the outputs (`AZURE_SYNC_CONTAINER_APP_NAME`). It runs a placeholder image until the next step. If it fails with a Key Vault error, the secret of step 1 is missing or you lack the role on the vault.
+4. Run `azd provision`. Expect the new app `ca-adrmcp-sync-dev-scus-01` in the outputs (`AZURE_SYNC_CONTAINER_APP_NAME`). It runs a placeholder image until the next step. If it fails with a Key Vault error, the secret of step 1 is missing or you lack the role on the vault.
 5. Run `azd deploy sync`. Expect the image to build in the registry and `Deploying service sync`.
 6. If you chose the sign-in by hand: run `az containerapp exec --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --command "ob login"` and answer the prompts (email, password, two-factor code). Expect your account shown; press Ctrl+D. The login is stored on the state share, so a restart does not ask again.
 7. Check: `az containerapp logs show --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --tail 50` shows `vault set up for pull-only sync`, `exclusions applied (<n>): ...` and `synced; exclusions from adr-sidekick.md` within a couple of minutes. Then `curl "$(azd env get-value VAULT_HEALTH_URL)"` answers `"settingsNote":true`: the server sees the note. The tools stay locked until step 3 (sign-in) is turned on.

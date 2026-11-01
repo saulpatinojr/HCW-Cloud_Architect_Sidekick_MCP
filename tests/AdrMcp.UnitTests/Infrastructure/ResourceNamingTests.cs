@@ -280,13 +280,19 @@ public sealed class ResourceNamingTests : IClassFixture<BicepSnapshotFixture>
     [Fact]
     public void The_environment_links_its_storages_one_at_a_time()
     {
-        // A first real provision failed with ManagedEnvironmentStorageLockConflict: the environment accepts one storage change at a
-        // time, and a copy loop deploys in parallel unless it is batched. The sync app's two links are batched, deployed only when
-        // sync is on, and after the server app (the gap the lock needs); the server's one link is the only one in the environment module.
-        var module = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment-sync-storage.bicep"));
-        Assert.Matches(@"@batchSize\(1\)\s*\r?\nresource shares 'Microsoft\.App/managedEnvironments/storages@", module);
+        // Real provisions failed with ManagedEnvironmentStorageLockConflict whenever two links followed each other inside one
+        // deployment, in parallel and (batched) in series alike: the environment accepts one storage change at a time and holds the
+        // lock for a while after each. So every link is its own deployment: the server's read-only link in the environment module,
+        // then the server app, then the sync app's two read-write links in a chain of two single-link modules.
         var main = File.ReadAllText(Path.Join(Root, "infra", "vault", "main.bicep"));
-        Assert.Matches(@"module syncStorage '\./modules/containerapps-environment-sync-storage\.bicep' = if \(syncEnabled\) \{\s*name: 'sync-storage'\s*scope: rg\s*dependsOn: \[ containerApp \]", main);
+        Assert.Matches(@"module syncStorageVault '\./modules/containerapps-environment-storage-link\.bicep' = if \(syncEnabled\) \{\s*name: 'sync-storage-vault'\s*scope: rg\s*dependsOn: \[ containerApp \]", main);
+        Assert.Matches(@"module syncStorageState '\./modules/containerapps-environment-storage-link\.bicep' = if \(syncEnabled\) \{\s*name: 'sync-storage-state'\s*scope: rg\s*dependsOn: \[ syncStorageVault \]", main);
+        Assert.Matches(@"module containerAppSync '\./modules/containerapp-sync\.bicep' = if \(syncEnabled\) \{\s*name: 'containerapp-sync'\s*scope: rg\s*dependsOn: \[ syncStorageState \]", main);
+        var link = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment-storage-link.bicep"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(link, @"resource \w+ 'Microsoft\.App/managedEnvironments/storages@"));   // one link per deployment, no loop
+        var environment = File.ReadAllText(Path.Join(Root, "infra", "vault", "modules", "containerapps-environment.bicep"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(environment, @"resource \w+ 'Microsoft\.App/managedEnvironments/storages@"));
+        Assert.DoesNotContain("[for ", environment);
     }
 
     [BicepFact]

@@ -9,7 +9,7 @@ param logAnalyticsWorkspaceId string
 param identityId string
 param storageAccountName string
 param shareName string
-@description('Name of the read-only storage definition the vault server mounts. The sync app\'s read-write links are made by containerapps-environment-sync-storage.bicep, only when sync is on.')
+@description('Name of the read-only storage definition the vault server mounts. The sync app\'s read-write links are made by containerapps-environment-storage-link.bicep, only when sync is on.')
 param storageDefinitionName string
 @allowed([ 'ManagedIdentity', 'AccountKey' ])
 param shareAuth string
@@ -41,7 +41,7 @@ resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
 }
 
 // The one link the vault server needs: the share, read-only. The environment accepts one storage change at a time (see
-// containerapps-environment-sync-storage.bicep for the sync app's two read-write links and the lock they ran into). ARM
+// containerapps-environment-storage-link.bicep for the sync app's two read-write links and the lock they ran into). ARM
 // evaluates only the chosen branch of the condition, so no key is read in ManagedIdentity mode.
 resource share 'Microsoft.App/managedEnvironments/storages@2026-03-02-preview' = {
   parent: environment

@@ -52,6 +52,12 @@ function ob(args, { secretArgs = [] } = {}) {
   return { ok: result.status === 0, out: result.stdout ?? '', err: result.stderr ?? '', shown };
 }
 
+/** The line of an ob failure that says what went wrong, not the last line of a stack trace. */
+function firstError(r) {
+  const lines = (r.err || r.out).trim().split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.find(l => /fail|error|not |denied|locked|invalid/i.test(l) && !l.startsWith('at ')) || lines[0] || '(no message)';
+}
+
 function checkConfiguration() {
   const problems = [];
   if (!env.OB_VAULT) problems.push('OB_VAULT is not set (the remote vault name or id).');
@@ -85,6 +91,27 @@ function vaultConfigured() {
   return ob(['sync-status', '--path', vaultPath, '--json']).ok;
 }
 
+/**
+ * The vault's sync mode as the client reports it, or null when it cannot say. The sidecar never syncs unless this is pull-only:
+ * on the first real deployment sync-setup succeeded but the sync-config call that sets pull-only did not, which left the vault
+ * in the client's default two-way mode.
+ */
+function syncMode() {
+  const r = ob(['sync-status', '--path', vaultPath, '--json']);
+  if (!r.ok) return null;
+  try { return JSON.parse(r.out).syncMode ?? null; } catch { return null; }
+}
+
+function ensurePullOnly() {
+  if (syncMode() === 'pull-only') return true;
+  const c = ob(['sync-config', '--path', vaultPath, '--mode', 'pull-only', '--json']);
+  if (!c.ok) log('sync-config --mode pull-only failed:', firstError(c));
+  const mode = syncMode();
+  if (mode === 'pull-only') { log('vault switched to pull-only sync'); return true; }
+  log(`refusing to sync: the vault's sync mode is ${mode ?? 'unknown'}, not pull-only; nothing is synced until it is`);
+  return false;
+}
+
 function setupVault() {
   const args = ['sync-setup', '--vault', env.OB_VAULT, '--path', vaultPath, '--device-name', env.OB_DEVICE_NAME || env.CONTAINER_APP_NAME || 'azure-vault-sync', '--json'];
   const secretArgs = [];
@@ -93,7 +120,7 @@ function setupVault() {
   if (!r.ok) { log('sync-setup failed:', r.err.trim().split('\n')[0] || '(no message)'); return false; }
   // Pull only, Markdown only, no Obsidian configuration or plugins: the share holds notes and nothing that runs.
   const c = ob(['sync-config', '--path', vaultPath, '--mode', 'pull-only', '--file-types', env.SYNC_FILE_TYPES || '', '--configs', '', '--json']);
-  if (!c.ok) { log('sync-config failed:', c.err.trim().split('\n')[0] || '(no message)'); return false; }
+  if (!c.ok) { log('sync-config failed:', firstError(c)); return false; }
   log('vault set up for pull-only sync into', vaultPath);
   return true;
 }
@@ -144,6 +171,7 @@ function pruneExcluded(excluded) {
 async function cycle() {
   if (!login()) return false;
   if (!vaultConfigured() && !setupVault()) return false;
+  if (!ensurePullOnly()) return false;
   const desired = desiredExclusions();
   if (desired === null) {
     log(`refusing to sync: ${FILE_NAME} is not in the share yet and SYNC_EXCLUDE_SEED is empty; an empty exclusion list would pull the whole vault. Set the seed to the top-level folders that must stay private.`);
@@ -151,7 +179,7 @@ async function cycle() {
   }
   if (!applyExclusions(desired.excluded)) return false;
   const s = ob(['sync', '--path', vaultPath]);
-  if (!s.ok) { log('sync failed:', (s.err || s.out).trim().split('\n').slice(-1)[0] || '(no message)'); return false; }
+  if (!s.ok) { log('sync failed:', firstError(s)); return false; }
   log(`synced; exclusions from ${desired.source}; allowed folders: ${desired.allow.join(', ') || '(none yet)'}`);
   if (prune) pruneExcluded(desired.excluded);
   return true;

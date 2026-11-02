@@ -39,3 +39,11 @@ test('a stored token file counts as logged in, an empty or missing one does not'
 test('OBSIDIAN_AUTH_TOKEN counts as logged in without a file', () => {
   assert.equal(hasStoredLogin({ OBSIDIAN_AUTH_TOKEN: 'x' }, path.join(os.tmpdir(), 'no-such-dir')), true);
 });
+
+test('the cycle checks for pull-only mode before it can reach ob sync', () => {
+  const body = source.slice(source.indexOf('async function cycle('));
+  const guard = body.indexOf('ensurePullOnly()');
+  assert.ok(guard > 0, 'cycle() must call ensurePullOnly()');
+  assert.ok(guard < body.indexOf("['sync', '--path'"), 'ensurePullOnly() must run before ob sync');
+  assert.match(source, /syncMode\(\) === 'pull-only'/);
+});

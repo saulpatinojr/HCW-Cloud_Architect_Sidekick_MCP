@@ -11,7 +11,10 @@ export function tokenPath(configHome) {
   return path.join(configHome, 'obsidian-headless', 'auth_token');
 }
 
+export function readToken(configHome) {
+  try { return fs.readFileSync(tokenPath(configHome), 'utf8').trim() || null; } catch { return null; }
+}
+
 export function hasStoredLogin(env, configHome) {
-  if (env.OBSIDIAN_AUTH_TOKEN) return true;
-  try { return fs.readFileSync(tokenPath(configHome), 'utf8').trim().length > 0; } catch { return false; }
+  return Boolean(env.OBSIDIAN_AUTH_TOKEN || readToken(configHome));
 }

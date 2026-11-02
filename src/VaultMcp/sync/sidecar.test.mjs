@@ -47,3 +47,18 @@ test('the cycle checks for pull-only mode before it can reach ob sync', () => {
   assert.ok(guard < body.indexOf("['sync', '--path'"), 'ensurePullOnly() must run before ob sync');
   assert.match(source, /syncMode\(\) === 'pull-only'/);
 });
+
+test('only ob login uses the share as its config home; every other command keeps its state on local disk', () => {
+  const body = source.slice(source.indexOf('function obEnv('), source.indexOf('/** Runs `ob`'));
+  assert.match(body, /if \(forLogin\) return \{ \.\.\.env, HOME: statePath, XDG_CONFIG_HOME: loginHome \}/);
+  assert.match(body, /XDG_CONFIG_HOME: workHome/);
+  assert.match(source, /env: obEnv\(args\[0\] === 'login'\)/);
+  assert.doesNotMatch(source, /XDG_CONFIG_HOME: (configHome|`\$\{statePath\})/);
+});
+
+test('exclusions are compared with what the client holds, never with a remembered file', () => {
+  assert.doesNotMatch(source, /appliedFile|readApplied/);
+  const body = source.slice(source.indexOf('function applyExclusions('), source.indexOf('function pruneExcluded('));
+  assert.match(body, /heldExclusions\(\) === wanted/);
+  assert.match(body, /heldExclusions\(\) !== wanted/);
+});

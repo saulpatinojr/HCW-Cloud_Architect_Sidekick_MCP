@@ -152,16 +152,30 @@ The HTTP host reads a copy of your allow-listed folders from the file share. Ste
 
 **You need:** step 1b provisioned, an Obsidian Sync subscription, the name of the remote vault (`ob sync-list-remote` on your machine shows it, or Settings → Sync in the app), and the vault's end-to-end encryption password. Reference: [Obsidian Headless](https://obsidian.md/help/sync/headless).
 
-1. Put the secrets into Key Vault, from a terminal signed in with `az login` (you need Key Vault Secrets Officer on `kv-adrmcp-dev-scus-01`: step 3 of the deploy section, `VAULT_DEPLOYER_PRINCIPAL_ID`). Type each value into a private file so it never lands in your shell history, then delete the file:
+1. Put the secrets into Key Vault, from a terminal signed in with `az login` (you need Key Vault Secrets Officer on `kv-adrmcp-dev-scus-01`: step 3 of the deploy section, `VAULT_DEPLOYER_PRINCIPAL_ID`). Type each value into a private file so it never lands in your shell history, then delete the file. The block refuses an empty entry: Key Vault accepts an empty secret, and Container Apps then fails the sync app's revision with the misleading `Unable to get value using Managed identity` (seen on the first real provision):
    ```bash
    KV=$(cd src/VaultMcp && azd env get-value AZURE_KEY_VAULT_NAME)
-   read -rs -p "vault password: " P; printf '%s' "$P" > /tmp/s; unset P
-   az keyvault secret set --vault-name "$KV" --name obsidian-vault-password --file /tmp/s --query id -o tsv > /dev/null; rm /tmp/s
+   read -rs -p "vault password: " P; echo
+   if [ "${#P}" -ge 8 ]; then
+     tmp=$(mktemp) && printf '%s' "$P" > "$tmp" && unset P \
+       && az keyvault secret set --vault-name "$KV" --name obsidian-vault-password --file "$tmp" --query id -o tsv > /dev/null
+     rm -f -- "$tmp"
+   else
+     unset P; echo "nothing typed, or too short: nothing stored" >&2
+   fi
    ```
-   Expect a line with the secret id on success, and nothing else. For a vault with standard (not end-to-end) encryption, skip the password and run `azd env set VAULT_SYNC_VAULT_ENCRYPTED false` instead.
+   PowerShell:
+   ```powershell
+   $KV = azd env get-value AZURE_KEY_VAULT_NAME   # in src/VaultMcp
+   $s = Read-Host -AsSecureString 'vault password'; $p = [System.Net.NetworkCredential]::new('', $s).Password
+   if ($p.Length -lt 8) { Remove-Variable p, s; throw 'Nothing typed, or too short. Nothing was stored.' }
+   $tmp = New-TemporaryFile; Set-Content -Path $tmp -Value $p -NoNewline; Remove-Variable p
+   az keyvault secret set --vault-name $KV --name obsidian-vault-password --file $tmp --query id -o tsv > $null; Remove-Item $tmp; Remove-Variable s
+   ```
+   Expect no output on success (the bash line prints nothing; a refusal prints one line and stores nothing). To check what is stored without showing it: `$v = az keyvault secret show --vault-name $KV --name obsidian-vault-password --query value -o tsv; $v.Length; Remove-Variable v` prints the length only; `0` means empty, store it again. For a vault with standard (not end-to-end) encryption, skip the password and run `azd env set VAULT_SYNC_VAULT_ENCRYPTED false` instead.
 2. Choose how the container signs in to Obsidian Sync. **Recommended: by hand, once.** Skip this step; the container waits for you (step 6). Alternative, for an Obsidian account **without** two-factor authentication: repeat step 1 for `obsidian-email` and `obsidian-password`, then `azd env set VAULT_SYNC_LOGIN_FROM_KEY_VAULT true`.
 3. In `src/VaultMcp`: `azd env set VAULT_SYNC_ENABLED true`, `azd env set VAULT_SYNC_REMOTE_VAULT "<remote vault name>"`, `azd env set VAULT_SYNC_EXCLUDE_SEED "<private top-level folders, comma-separated>"`.
-4. Run `azd provision`. Expect the new app `ca-adrmcp-sync-dev-scus-01` in the outputs (`AZURE_SYNC_CONTAINER_APP_NAME`). It runs a placeholder image until the next step. If it fails with a Key Vault error, the secret of step 1 is missing or you lack the role on the vault.
+4. Run `azd provision`. Expect the new app `ca-adrmcp-sync-dev-scus-01` in the outputs (`AZURE_SYNC_CONTAINER_APP_NAME`). It runs a placeholder image until the next step. If it fails with `Unable to get value using Managed identity` for `obsidian-vault-password`, the secret is missing, empty (step 1's length check), or the identity lacks Key Vault Secrets User on the vault; after such a failure the app is left in a Failed state and the next provision cannot read it, so remove it first, from `src/VaultMcp`: `az containerapp delete --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --yes` and `azd env set SERVICE_SYNC_RESOURCE_EXISTS false`, then provision again.
 5. Run `azd deploy sync`. Expect the image to build in the registry and `Deploying service sync`.
 6. If you chose the sign-in by hand: run `az containerapp exec --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --command "ob login"` and answer the prompts (email, password, two-factor code). Expect your account shown; press Ctrl+D. The login is stored on the state share, so a restart does not ask again.
 7. Check: `az containerapp logs show --name "$(azd env get-value AZURE_SYNC_CONTAINER_APP_NAME)" --resource-group "$(azd env get-value AZURE_RESOURCE_GROUP)" --tail 50` shows `vault set up for pull-only sync`, `exclusions applied (<n>): ...` and `synced; exclusions from adr-sidekick.md` within a couple of minutes. Then `curl "$(azd env get-value VAULT_HEALTH_URL)"` answers `"settingsNote":true`: the server sees the note. The tools stay locked until step 3 (sign-in) is turned on.

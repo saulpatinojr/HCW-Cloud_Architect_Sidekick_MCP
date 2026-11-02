@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseAllowList, computeExclusions, parseSeed, toSyncArgument, FILE_NAME } from './exclusions.mjs';
-import { hasStoredLogin } from './login-state.mjs';
+import { hasStoredLogin, readToken } from './login-state.mjs';
 
 const env = process.env;
 const vaultPath = env.VAULT_PATH || '/vault';
@@ -34,8 +34,14 @@ const interval = Math.max(15, Number(env.SYNC_INTERVAL_SECONDS || 60));
 const prune = (env.SYNC_PRUNE || 'true').toLowerCase() !== 'false';
 const checkOnly = process.argv.includes('--check');
 const once = process.argv.includes('--once');
-const appliedFile = path.join(statePath, 'excluded-folders.txt');
-const configHome = path.join(statePath, '.config'); // where `ob` keeps its login: XDG_CONFIG_HOME for every call below
+// Two config homes. The login (a plain token file) lives on the state share, so a restart does not log out; `ob login` by hand
+// writes it there (HOME is the share). Everything else the client keeps under XDG_CONFIG_HOME, above all its SQLite sync
+// database, lives on the container's own disk: SQLite cannot lock files on the Azure Files (SMB) share, and on the first real
+// deployment every write failed with "SqliteError: database is locked". The local state is rebuilt after a restart (setup runs
+// again and the allow-listed folders are pulled again), which is cheap for a pull-only copy.
+const loginHome = path.join(statePath, '.config');
+const workHome = env.SYNC_WORK_PATH || '/tmp/obsidian-headless-work';
+fs.mkdirSync(workHome, { recursive: true, mode: 0o700 });
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 // True while the only thing missing is a sign-in by hand: the loop then polls at the normal interval instead of backing off, so a
@@ -43,11 +49,21 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 let waitingForLogin = false;
 const fail = (code, message) => { console.error(message); process.exit(code); };
 
+/**
+ * The environment for one `ob` call. `ob login` writes its token to the share (loginHome); every other command keeps its state on
+ * the local disk (workHome) and gets the token from the share through OBSIDIAN_AUTH_TOKEN, which the client reads before its file.
+ */
+function obEnv(forLogin) {
+  if (forLogin) return { ...env, HOME: statePath, XDG_CONFIG_HOME: loginHome };
+  const token = env.OBSIDIAN_AUTH_TOKEN || readToken(loginHome);
+  return { ...env, HOME: workHome, XDG_CONFIG_HOME: workHome, ...(token ? { OBSIDIAN_AUTH_TOKEN: token } : {}) };
+}
+
 /** Runs `ob` with the given arguments; secrets are passed as arguments but never logged. */
 function ob(args, { secretArgs = [] } = {}) {
   const shown = args.map(a => (secretArgs.includes(a) ? '<secret>' : a)).join(' ');
   // input: '' closes stdin, so a prompt the --json flag did not suppress ends with an error instead of hanging the cycle.
-  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: configHome }, timeout: 15 * 60 * 1000 });
+  const result = spawnSync('ob', args, { encoding: 'utf8', input: '', env: obEnv(args[0] === 'login'), timeout: 15 * 60 * 1000 });
   if (result.error) return { ok: false, out: '', err: `ob could not start: ${result.error.message}`, shown };
   return { ok: result.status === 0, out: result.stdout ?? '', err: result.stderr ?? '', shown };
 }
@@ -61,7 +77,7 @@ function firstError(r) {
 function checkConfiguration() {
   const problems = [];
   if (!env.OB_VAULT) problems.push('OB_VAULT is not set (the remote vault name or id).');
-  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: { ...env, HOME: statePath, XDG_CONFIG_HOME: configHome } }).error) problems.push('the ob command (obsidian-headless) is not installed.');
+  if (spawnSync('ob', ['sync-list-local', '--json'], { encoding: 'utf8', input: '', env: obEnv(false) }).error) problems.push('the ob command (obsidian-headless) is not installed.');
   if (!fs.existsSync(vaultPath)) problems.push(`VAULT_PATH ${vaultPath} does not exist (mount the vault share there).`);
   if (!fs.existsSync(statePath)) problems.push(`STATE_PATH ${statePath} does not exist (mount the state share there).`);
   if ((env.OB_EMAIL ? 1 : 0) + (env.OB_PASSWORD ? 1 : 0) === 1) problems.push('OB_EMAIL and OB_PASSWORD must be set together or not at all.');
@@ -70,7 +86,7 @@ function checkConfiguration() {
 
 function loggedIn() {
   // Reads the stored token instead of running `ob login`, which has no status mode (see login-state.mjs).
-  return hasStoredLogin(env, configHome);
+  return hasStoredLogin(env, loginHome);
 }
 
 function login() {
@@ -143,14 +159,23 @@ function desiredExclusions() {
   return null;
 }
 
-function readApplied() { try { return fs.readFileSync(appliedFile, 'utf8').trim(); } catch { return null; } }
+/**
+ * The exclusions the client actually holds, read from it on every cycle. Not remembered in a file: the client's state is rebuilt
+ * on local disk after a restart, and a remembered "already applied" would then skip the exclusions and pull private folders.
+ */
+function heldExclusions() {
+  const r = ob(['sync-status', '--path', vaultPath, '--json']);
+  if (!r.ok) return null;
+  try { return [...(JSON.parse(r.out).excludedFolders ?? [])].sort().join(','); } catch { return null; }
+}
 
 function applyExclusions(excluded) {
   const argument = toSyncArgument(excluded);
-  if (readApplied() === argument) return true;
+  const wanted = [...excluded].sort().join(',');
+  if (heldExclusions() === wanted) return true;
   const r = ob(['sync-config', '--path', vaultPath, '--excluded-folders', argument, '--json']);
-  if (!r.ok) { log('sync-config --excluded-folders failed:', r.err.trim().split('\n')[0] || '(no message)'); return false; }
-  fs.writeFileSync(appliedFile, argument + '\n');
+  if (!r.ok) { log('sync-config --excluded-folders failed:', firstError(r)); return false; }
+  if (heldExclusions() !== wanted) { log('refusing to sync: the client does not hold the exclusions just applied'); return false; }
   log(`exclusions applied (${excluded.length}):`, excluded.join(', ') || '(none)');
   return true;
 }
@@ -193,7 +218,7 @@ if (checkOnly) {
 }
 if (problems.length > 0) fail(2, problems.join('\n'));
 
-log(`vault sync sidecar starting: vault=${vaultPath} state=${statePath} interval=${interval}s prune=${prune}`);
+log(`vault sync sidecar starting: vault=${vaultPath} state=${statePath} work=${workHome} interval=${interval}s prune=${prune}`);
 for (;;) {
   let ok = false;
   try { ok = await cycle(); } catch (e) { log('cycle failed:', e.message); }
